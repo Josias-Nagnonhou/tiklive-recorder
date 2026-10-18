@@ -2,146 +2,238 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TikLive Recorder</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TikLive</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+<script>
+  // Thème choisi (clair/sombre) appliqué avant l'affichage pour éviter un flash
+  try { const t = localStorage.getItem("tiklive-theme"); if (t) document.documentElement.dataset.theme = t; } catch(e) {}
+</script>
 <style>
-  :root{
-    --bg:#0d0d10; --panel:#16161b; --line:#26262e; --text:#f2f2f5; --muted:#8b8b98;
-    --accent:#fe2c55; --accent2:#25f4ee; --ok:#3ddc84; --warn:#ffb020;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;font-size:15px}
-  .wrap{max-width:760px;margin:0 auto;padding:24px 16px 60px}
-  header{display:flex;align-items:center;gap:12px;margin-bottom:22px}
-  .logo{width:38px;height:38px;border-radius:10px;background:var(--accent);display:grid;place-items:center;
-        box-shadow:-3px -3px 0 var(--accent2)}
-  .logo span{width:12px;height:12px;border-radius:50%;background:#fff}
-  h1{font-family:"Space Grotesk";font-size:22px;margin:0;letter-spacing:-.3px}
-  h1 small{display:block;font-family:Inter;font-weight:400;font-size:13px;color:var(--muted);letter-spacing:0}
-  h2{font-family:"Space Grotesk";font-size:16px;margin:28px 0 10px;color:var(--muted);font-weight:500;
-     text-transform:uppercase;letter-spacing:.8px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
-  input{width:100%;padding:14px;border-radius:10px;border:1px solid var(--line);background:#0f0f13;
-        color:var(--text);font-size:16px;outline:none}
-  input:focus{border-color:var(--accent)}
-  .btns{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap}
-  button{border:0;border-radius:10px;padding:12px 16px;font-weight:600;font-size:14px;cursor:pointer;
-         font-family:inherit}
-  .primary{background:var(--accent);color:#fff;flex:1;min-width:160px}
-  .secondary{background:#23232b;color:var(--text);flex:1;min-width:160px}
-  .small{padding:8px 12px;font-size:13px}
-  .ghost{background:transparent;color:var(--muted);border:1px solid var(--line)}
-  .danger{background:#3a1520;color:#ff7a93}
-  .dl{background:var(--ok);color:#06210f;text-decoration:none;display:inline-block;border-radius:10px;
-      padding:8px 12px;font-weight:600;font-size:13px}
-  button:disabled{opacity:.5;cursor:default}
-  .msg{margin-top:10px;font-size:14px;min-height:20px}
-  .msg.err{color:#ff7a93}.msg.ok{color:var(--ok)}.msg.info{color:var(--warn)}
-  .rec{display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-top:1px solid var(--line)}
-  .rec:first-child{border-top:0;padding-top:0}
-  .dot{width:10px;height:10px;border-radius:50%;margin-top:6px;flex:none;background:var(--muted)}
-  .dot.live{background:var(--accent);animation:pulse 1.2s infinite}
-  .dot.done{background:var(--ok)} .dot.fin{background:var(--warn)} .dot.err{background:#ff7a93}
-  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(254,44,85,.6)}100%{box-shadow:0 0 0 10px rgba(254,44,85,0)}}
-  .info{flex:1;min-width:0}
-  .who{font-weight:600}
-  .meta{color:var(--muted);font-size:13px;margin-top:3px;overflow-wrap:anywhere}
-  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-  .empty{color:var(--muted);font-size:14px}
-  .w{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
-  .w:first-child{border-top:0;padding-top:0}
-  details summary{cursor:pointer;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center}
-  details summary::-webkit-details-marker{display:none}
-  .badge{font-size:12px;padding:3px 8px;border-radius:20px;background:#23232b;color:var(--muted);font-weight:500}
-  .badge.on{background:#103322;color:var(--ok)}
-  .steps{color:var(--muted);font-size:14px;line-height:1.55;padding-left:20px;margin:14px 0}
-  .steps b{color:var(--text)} .steps a{color:var(--accent2)}
-  .steps code{background:#0f0f13;border:1px solid var(--line);padding:2px 6px;border-radius:6px;color:var(--text)}
-  label.f{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}
-  select{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:#0f0f13;color:var(--text);font-size:15px}
-  .chk{display:flex;align-items:center;gap:10px;margin:8px 0;font-size:14px}
-  .chk input{width:18px;height:18px;accent-color:var(--accent)}
-  footer{margin-top:30px;color:var(--muted);font-size:12px;text-align:center}
+/* Studio : clair et aéré, galerie de vidéos, touches roses/cyan TikTok. Mode sombre au choix. */
+:root{
+  --bg:#f7f8fb; --card:#ffffff; --line:#e7e9f0; --fg:#0e1016; --muted:#6b7080; --soft:#eef0f5;
+  --ink:#0e1016; --on-ink:#ffffff; --pink:#fe2c55; --cyan:#25c3e0; --pill-bg:#ffe8ed; --pill-fg:#c8143c;
+  --ok:#14965c; --ok-bg:#e3f6ec; --warn:#b26b00; --warn-bg:#fff3dc; --err:#c8143c;
+  --shadow:0 8px 28px -16px rgba(14,16,22,.28);
+  --f-display:"Sora", system-ui, sans-serif; --f-body:"DM Sans", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0d0e12; --card:#16181e; --line:#262932; --fg:#eef0f5; --muted:#949aa8; --soft:#1e2028;
+  --ink:#eef0f5; --on-ink:#0d0e12; --pill-bg:#3a1520; --pill-fg:#ff8aa1;
+  --ok:#4fd99a; --ok-bg:#12291f; --warn:#ffbe55; --warn-bg:#2b2111; --err:#ff8aa1;
+  --shadow:0 10px 30px -18px rgba(0,0,0,.8); color-scheme: dark } }
+:root[data-theme="dark"]{
+  --bg:#0d0e12; --card:#16181e; --line:#262932; --fg:#eef0f5; --muted:#949aa8; --soft:#1e2028;
+  --ink:#eef0f5; --on-ink:#0d0e12; --pill-bg:#3a1520; --pill-fg:#ff8aa1;
+  --ok:#4fd99a; --ok-bg:#12291f; --warn:#ffbe55; --warn-bg:#2b2111; --err:#ff8aa1;
+  --shadow:0 10px 30px -18px rgba(0,0,0,.8); color-scheme: dark }
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.45;transition:background .25s,color .25s}
+.wrap{max-width:880px;margin:0 auto;padding-block:20px 48px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+/* En-tête */
+.top{display:flex;align-items:center;gap:10px}
+.brand{font-family:var(--f-display);font-weight:700;font-size:22px;letter-spacing:-.03em;margin-right:auto;display:flex;align-items:center;gap:8px}
+.brand i{width:10px;height:10px;border-radius:50%;background:var(--pink);box-shadow:-3px -3px 0 var(--cyan)}
+.iconbtn{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--card);display:grid;place-items:center;padding:0}
+.iconbtn svg{width:18px;height:18px}
+.avatar{width:40px;height:40px;border-radius:50%;background:var(--soft);display:grid;place-items:center;font-weight:600}
+
+.hello{font-family:var(--f-display);font-size:clamp(26px,5vw,34px);font-weight:600;letter-spacing:-.03em;line-height:1.12;margin:26px 0 6px;text-wrap:balance}
+.hint{color:var(--muted);margin:0}
+
+/* Barre de saisie */
+.paste{margin-top:18px;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:6px;display:flex;align-items:center;gap:6px;box-shadow:var(--shadow)}
+.paste input{flex:1;min-width:0;border:0;background:transparent;padding:12px 12px;font-size:16px;outline:none}
+.paste input::placeholder{color:var(--muted)}
+.btn{border:0;border-radius:14px;padding:12px 18px;font-weight:600;font-size:14.5px;white-space:nowrap}
+.btn-ink{background:var(--ink);color:var(--on-ink)}
+.btn-soft{background:var(--soft);color:var(--fg)}
+.btn:disabled{opacity:.5;cursor:default}
+.subactions{display:flex;gap:16px;margin-top:10px;padding-left:6px;flex-wrap:wrap}
+.link{background:none;border:0;padding:0;color:var(--muted);font-weight:500;font-size:14px;text-decoration:underline;text-underline-offset:3px}
+.msg{margin-top:10px;font-size:14px;min-height:0;padding-left:6px}
+.msg:empty{display:none}
+.msg.ok{color:var(--ok)} .msg.err{color:var(--err)} .msg.info{color:var(--warn)}
+.msg .btn{margin-left:6px;padding:6px 12px;font-size:13px}
+
+h2{font-family:var(--f-display);font-size:16px;font-weight:600;letter-spacing:-.01em;margin:32px 0 12px;display:flex;align-items:baseline;flex-wrap:wrap;column-gap:8px;row-gap:2px}
+h2 small{font-family:var(--f-body);font-weight:400;color:var(--muted);font-size:13.5px}
+h2 small.block{flex-basis:100%}
+
+/* Lives en cours */
+.lives{display:grid;gap:10px}
+.live{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:14px 16px;display:flex;gap:14px;align-items:center}
+.ring{width:58px;height:58px;border-radius:50%;padding:3px;background:conic-gradient(var(--pink),var(--cyan),var(--pink));flex:none}
+.ring div{width:100%;height:100%;border-radius:50%;border:3px solid var(--card);display:grid;place-items:center;font-weight:600;font-size:15px;color:#fff}
+.live .info{flex:1;min-width:0}
+.pill{display:inline-flex;align-items:center;gap:6px;background:var(--pill-bg);color:var(--pill-fg);font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--pink)}
+.pill.wait{background:var(--warn-bg);color:var(--warn)} .pill.wait::before{background:var(--warn)}
+.live .name{font-weight:600;font-size:16px;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.live .time{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.bar{height:5px;border-radius:5px;background:var(--soft);margin-top:8px;overflow:hidden}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--pink),var(--cyan));border-radius:5px;transition:width .4s}
+.stop{width:44px;height:44px;border-radius:14px;border:1px solid var(--line);background:var(--card);display:grid;place-items:center;flex:none;padding:0}
+.stop i{width:13px;height:13px;border-radius:3px;background:var(--fg);display:block}
+
+/* Comptes surveillés (façon stories) */
+.follow{display:flex;gap:16px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:none}
+.follow::-webkit-scrollbar{display:none}
+.f{flex:none;width:68px;text-align:center;font-size:12.5px;position:relative}
+.f .c{width:60px;height:60px;border-radius:50%;margin:0 auto 6px;display:grid;place-items:center;font-weight:600;font-size:17px;color:#fff;border:2.5px solid var(--bg);box-shadow:0 0 0 2px var(--line)}
+.f.on .c{box-shadow:0 0 0 2.5px var(--pink)}
+.f .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.f .s{color:var(--muted);font-size:11.5px}
+.f.on .s{color:var(--pink);font-weight:600}
+.f .x{position:absolute;top:-2px;right:0;width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--muted);font-size:13px;line-height:1;padding:0;display:grid;place-items:center}
+.f.add .c{background:transparent;border:1.5px dashed var(--muted);box-shadow:none;color:var(--muted);font-size:24px;font-weight:400}
+.f.add{background:none;border:0;padding:0}
+
+/* Galerie de vidéos */
+.vids{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.vid{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.cover{aspect-ratio:9/11;position:relative;display:grid;place-items:center}
+.cover .ini{font-family:var(--f-display);font-size:34px;font-weight:600;color:rgba(255,255,255,.92);letter-spacing:-.02em}
+.tag{position:absolute;font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:7px;font-variant-numeric:tabular-nums}
+.tag.dur{left:8px;bottom:8px;background:rgba(10,12,16,.72);color:#fff}
+.tag.q{right:8px;top:8px;background:rgba(255,255,255,.92);color:#0e1016}
+.tag.st{left:8px;top:8px;background:rgba(10,12,16,.72);color:#fff}
+.vid .meta{padding:10px 12px 4px;font-size:12.5px;color:var(--muted);min-width:0}
+.vid .meta b{display:block;font-size:14px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vid .err{color:var(--err);font-size:12px;padding:0 12px 4px}
+.vid .acts{display:flex;gap:6px;padding:8px 10px 10px;margin-top:auto}
+.vid .acts a,.vid .acts button{flex:1;text-align:center;text-decoration:none;font-size:12.5px;font-weight:600;padding:8px 6px;border-radius:10px;border:0;background:var(--soft);color:var(--fg)}
+.vid .acts a.drive{background:var(--ink);color:var(--on-ink)}
+.vid .acts .del{flex:0 0 36px;color:var(--muted)}
+
+.empty{background:var(--card);border:1px dashed var(--line);border-radius:18px;padding:20px;color:var(--muted);font-size:14px;text-align:center}
+
+/* Réglages */
+.settings{background:var(--card);border:1px solid var(--line);border-radius:20px;overflow:hidden}
+details+details{border-top:1px solid var(--line)}
+summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:16px}
+summary::-webkit-details-marker{display:none}
+summary .ico{width:36px;height:36px;border-radius:11px;background:var(--soft);display:grid;place-items:center;font-size:17px;flex:none}
+summary .t{flex:1;font-weight:600}
+summary .chev{color:var(--muted);transition:transform .2s}
+details[open] summary .chev{transform:rotate(90deg)}
+.badge{font-size:12px;padding:3px 9px;border-radius:20px;background:var(--soft);color:var(--muted);font-weight:500}
+.badge.on{background:var(--ok-bg);color:var(--ok)}
+.panel{padding:0 16px 18px 64px}
+@media (max-width:520px){.panel{padding-left:16px}}
+.steps{color:var(--muted);font-size:14px;line-height:1.6;padding-left:18px;margin:0 0 12px}
+.steps b{color:var(--fg)} .steps a{color:var(--fg);text-underline-offset:3px}
+code{background:var(--soft);border:1px solid var(--line);padding:2px 7px;border-radius:7px;color:var(--fg);font-size:13.5px;word-break:break-all}
+.lbl{display:block;font-size:13px;color:var(--muted);margin:14px 0 6px}
+.field,select{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);font-size:15px}
+.chk{display:flex;align-items:center;gap:10px;margin:8px 0;font-size:14px}
+.chk input{width:18px;height:18px;accent-color:var(--pink);flex:none}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.btn.sm{padding:9px 14px;font-size:13.5px;border-radius:11px;text-decoration:none;display:inline-block}
+.panel .msg{padding-left:0}
+
+footer{margin-top:26px;color:var(--muted);font-size:12.5px;text-align:center}
+
+@media (prefers-reduced-motion:no-preference){
+  .pill::before{animation:blink 1.6s ease-in-out infinite}
+  @keyframes blink{50%{opacity:.3}}
+}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <div class="logo"><span></span></div>
-    <h1>TikLive Recorder<small>Enregistre les lives TikTok, même sans les regarder</small></h1>
+  <header class="top">
+    <div class="brand"><i></i>TikLive</div>
+    <button class="iconbtn" id="btnTheme" aria-label="Changer de thème" title="Mode clair / sombre"></button>
+    <div class="avatar" aria-hidden="true">J</div>
   </header>
 
-  <div class="card">
-    <input id="target" placeholder="Colle le lien du live ou le @pseudo" autocomplete="off">
-    <div class="btns">
-      <button class="primary" id="btnRec">● Enregistrer le live</button>
-      <button class="secondary" id="btnWatch">👁 Surveiller ce compte</button>
-    </div>
-    <div class="msg" id="msg"></div>
+  <h1 class="hello" id="hello">Bonjour Josias</h1>
+  <p class="hint" id="helloHint">Colle un lien pour enregistrer un live maintenant.</p>
+
+  <div class="paste">
+    <input id="target" placeholder="tiktok.com/@pseudo/live ou @pseudo" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button class="btn btn-ink" id="btnRec">Enregistrer</button>
   </div>
+  <div class="subactions">
+    <button class="link" id="btnWatch">Surveiller ce compte à la place</button>
+  </div>
+  <div class="msg" id="msg"></div>
 
-  <h2>Enregistrements</h2>
-  <div class="card" id="recs"><div class="empty">Aucun enregistrement pour l'instant.</div></div>
+  <section id="livesSec" hidden>
+    <h2>En direct <small id="livesCount"></small></h2>
+    <div class="lives" id="lives"></div>
+  </section>
 
-  <h2>Comptes surveillés</h2>
-  <div class="card" id="watch"><div class="empty">Aucun compte surveillé. Ajoute un @pseudo : dès qu'il lance un live, l'enregistrement démarre tout seul.</div></div>
+  <h2>Tes comptes <small class="block">Enregistrés automatiquement dès qu'ils lancent un live</small></h2>
+  <div class="follow" id="watch"></div>
+
+  <h2>Vidéos <small id="vidCount"></small></h2>
+  <div id="vids"></div>
 
   <h2>Réglages</h2>
-  <div class="card" style="margin-bottom:12px">
+  <div class="settings">
     <details id="driveDetails">
-      <summary>📁 Google Drive <span class="badge" id="driveBadge">non connecté</span></summary>
-      <p class="steps" style="padding-left:0">À la fin de chaque live, la vidéo est envoyée automatiquement dans le dossier
-        <b>« TikLive Recorder »</b> de ton Google Drive. La mémoire de l'outil (comptes surveillés, réglages) y est aussi sauvegardée.</p>
-      <div class="chk"><input type="checkbox" id="driveDel"> Libérer le serveur une fois la vidéo sur le Drive (conseillé)</div>
-      <div class="btns"><a class="dl" id="btnDrive" href="/oauth/start" style="padding:12px 16px">Connecter mon Google Drive</a></div>
-    </details>
-  </div>
-
-  <div class="card" style="margin-bottom:12px">
-    <details id="ntfyDetails" open>
-      <summary>🔔 Notifications sur ton téléphone <span class="badge on">gratuit</span></summary>
-      <ol class="steps">
-        <li>Installe l'application gratuite <b>ntfy</b> :
-          <a href="https://play.google.com/store/apps/details?id=io.heckel.ntfy" target="_blank" rel="noopener">Android (Play Store)</a> ·
-          <a href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank" rel="noopener">iPhone (App Store)</a></li>
-        <li>Ouvre-la, appuie sur le bouton <b>+</b>, puis écris ce nom exactement :<br>
-          <code id="ntfyTopic">…</code> <button class="small ghost" id="btnCopy">Copier</button></li>
-        <li>Appuie sur <b>S'abonner</b> (Subscribe), puis reviens ici et clique sur <b>Tester</b>.</li>
-      </ol>
-      <div class="btns"><button class="primary" id="btnTestPhone">Tester la notification</button></div>
-      <div class="msg" id="phoneMsg"></div>
-    </details>
-  </div>
-
-  <div class="card">
-    <details id="setDetails">
-      <summary>📲 WhatsApp et réglages <span class="badge" id="waBadge">non configuré</span></summary>
-      <ol class="steps">
-        <li>Ouvre <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noopener">cette page CallMeBot</a> et <b>enregistre dans tes contacts</b> le numéro WhatsApp indiqué.</li>
-        <li>Envoie à ce contact, sur WhatsApp, exactement ce message :<br><code>I allow callmebot to send me messages</code></li>
-        <li>Tu reçois une réponse avec ton <b>apikey</b> (un code de chiffres). Colle-le ci-dessous avec ton numéro, puis clique sur <b>Enregistrer</b> et <b>Tester</b>.</li>
-      </ol>
-      <label class="f">Ton numéro WhatsApp (avec l'indicatif, ex. +229 01 97 00 00 00)</label>
-      <input id="waPhone" placeholder="+229…" inputmode="tel">
-      <label class="f">Ton apikey CallMeBot</label>
-      <input id="waKey" placeholder="ex. 1234567" inputmode="numeric">
-      <label class="f">M'envoyer un message quand…</label>
-      <div class="chk"><input type="checkbox" id="nStart"> un live commence à être enregistré</div>
-      <div class="chk"><input type="checkbox" id="nDone"> la vidéo est prête à télécharger</div>
-      <div class="chk"><input type="checkbox" id="nError"> il y a un problème</div>
-      <div class="chk"><input type="checkbox" id="nDisk"> l'espace de stockage est presque plein</div>
-      <label class="f">🧹 Supprimer automatiquement les vidéos après</label>
-      <select id="retention">
-        <option value="2">2 jours</option><option value="3">3 jours</option><option value="7">7 jours</option>
-        <option value="14">14 jours</option><option value="30">30 jours</option><option value="0">Jamais</option>
-      </select>
-      <div class="btns">
-        <button class="primary" id="btnSave">Enregistrer</button>
-        <button class="secondary" id="btnTest">Tester WhatsApp</button>
+      <summary><span class="ico">📁</span><span class="t">Google Drive</span><span class="badge" id="driveBadge">non connecté</span><span class="chev">›</span></summary>
+      <div class="panel">
+        <p class="steps" style="padding-left:0">À la fin de chaque live, la vidéo part automatiquement dans le dossier <b>« TikLive Recorder »</b> de ton Drive. Tes comptes et réglages y sont aussi sauvegardés.</p>
+        <div class="chk"><input type="checkbox" id="driveDel"><label for="driveDel">Libérer le serveur une fois la vidéo sur le Drive (conseillé)</label></div>
+        <div class="row"><a class="btn btn-ink sm" id="btnDrive" href="/oauth/start">Connecter mon Google Drive</a></div>
       </div>
-      <div class="msg" id="setMsg"></div>
+    </details>
+
+    <details id="ntfyDetails">
+      <summary><span class="ico">🔔</span><span class="t">Notifications sur ton téléphone</span><span class="badge on">gratuit</span><span class="chev">›</span></summary>
+      <div class="panel">
+        <ol class="steps">
+          <li>Installe l'appli gratuite <b>ntfy</b> :
+            <a href="https://play.google.com/store/apps/details?id=io.heckel.ntfy" target="_blank" rel="noopener">Android</a> ·
+            <a href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank" rel="noopener">iPhone</a></li>
+          <li>Appuie sur <b>+</b> et écris exactement : <code id="ntfyTopic">…</code> <button class="btn btn-soft sm" id="btnCopy">Copier</button></li>
+          <li>Appuie sur <b>S'abonner</b>, puis teste ci-dessous.</li>
+        </ol>
+        <div class="row"><button class="btn btn-ink sm" id="btnTestPhone">Tester la notification</button></div>
+        <div class="msg" id="phoneMsg"></div>
+      </div>
+    </details>
+
+    <details id="setDetails">
+      <summary><span class="ico">⚙️</span><span class="t">WhatsApp et préférences</span><span class="badge" id="waBadge">WhatsApp non configuré</span><span class="chev">›</span></summary>
+      <div class="panel">
+        <label class="lbl">M'avertir quand…</label>
+        <div class="chk"><input type="checkbox" id="nStart"><label for="nStart">un live commence à être enregistré</label></div>
+        <div class="chk"><input type="checkbox" id="nDone"><label for="nDone">la vidéo est prête</label></div>
+        <div class="chk"><input type="checkbox" id="nError"><label for="nError">il y a un problème</label></div>
+        <div class="chk"><input type="checkbox" id="nDisk"><label for="nDisk">l'espace du serveur est presque plein</label></div>
+        <label class="lbl" for="retention">Supprimer les vidéos du serveur après</label>
+        <select id="retention">
+          <option value="2">2 jours</option><option value="3">3 jours</option><option value="7">7 jours</option>
+          <option value="14">14 jours</option><option value="30">30 jours</option><option value="0">Jamais</option>
+        </select>
+        <label class="lbl">WhatsApp (via CallMeBot, optionnel)</label>
+        <ol class="steps">
+          <li>Sur <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noopener">la page CallMeBot</a>, enregistre le numéro du bot dans tes contacts.</li>
+          <li>Envoie-lui sur WhatsApp : <code>I allow callmebot to send me messages</code></li>
+          <li>Colle le code reçu (apikey) ci-dessous.</li>
+        </ol>
+        <input class="field" id="waPhone" placeholder="Ton numéro, ex. +229 01 97 00 00 00" inputmode="tel">
+        <input class="field" id="waKey" placeholder="Ton apikey CallMeBot" inputmode="numeric" style="margin-top:8px">
+        <div class="row">
+          <button class="btn btn-ink sm" id="btnSave">Enregistrer les réglages</button>
+          <button class="btn btn-soft sm" id="btnTest">Tester WhatsApp</button>
+        </div>
+        <div class="msg" id="setMsg"></div>
+      </div>
     </details>
   </div>
 
@@ -150,91 +242,138 @@
 
 <script>
 const $ = s => document.querySelector(s);
-const fmtSize = b => !b ? "0 Mo" : b > 1e9 ? (b/1e9).toFixed(2)+" Go" : (b/1e6).toFixed(1)+" Mo";
-const fmtDur = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s/3600), m = Math.floor(s%3600/60), x = s%60;
-  return (h ? h+"h" : "") + String(m).padStart(h?2:1,"0") + "min" + String(x).padStart(2,"0") + "s"; };
-const fmtDate = iso => iso ? new Date(iso).toLocaleString("fr-FR",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "";
-const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtSize = b => !b ? "0 Mo" : b > 1e9 ? (b/1e9).toFixed(1).replace(".",",")+" Go" : Math.round(b/1e6)+" Mo";
+const clock = s => { s = Math.max(0, Math.round(s||0)); const h = Math.floor(s/3600), m = Math.floor(s%3600/60), x = s%60;
+  return (h ? h+":"+String(m).padStart(2,"0") : m) + ":" + String(x).padStart(2,"0"); };
+const human = s => { s = Math.max(0, Math.round(s||0)); const h = Math.floor(s/3600), m = Math.floor(s%3600/60);
+  return h ? `${h} h ${String(m).padStart(2,"0")} min` : `${m} min`; };
+const dayLabel = iso => { if (!iso) return ""; const d = new Date(iso), n = new Date();
+  const diff = Math.floor((new Date(n.toDateString()) - new Date(d.toDateString()))/864e5);
+  if (diff === 0) return "Aujourd'hui " + d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+  if (diff === 1) return "Hier"; if (diff < 7) return d.toLocaleDateString("fr-FR",{weekday:"long"});
+  return d.toLocaleDateString("fr-FR",{day:"numeric",month:"short"}); };
 
-function say(text, kind="info"){ const m=$("#msg"); m.className="msg "+kind; m.innerHTML=text; }
+// Couleur stable par compte (pour les ronds et les couvertures)
+const HUES = [[350,85,60],[192,72,48],[262,60,58],[24,88,56],[160,55,40],[220,70,55],[300,55,52]];
+function tint(name){ let h = 0; for (const c of name) h = (h*31 + c.charCodeAt(0)) >>> 0; return HUES[h % HUES.length]; }
+const solid = n => { const [h,s,l] = tint(n); return `hsl(${h} ${s}% ${l}%)`; };
+const grad = n => { const [h,s,l] = tint(n); return `linear-gradient(160deg,hsl(${h} ${s}% ${l}%),hsl(${(h+40)%360} ${s}% ${Math.max(l-18,20)}%))`; };
+const ini = n => (n.replace(/[^a-z0-9]/gi," ").trim().split(/\s+/).map(w=>w[0]).join("").slice(0,2) || n.slice(0,2)).toUpperCase();
 
+/* ---------- Thème clair / sombre ---------- */
+const SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+const MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+const isDark = () => { const t = document.documentElement.dataset.theme;
+  return t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; };
+function paintThemeBtn(){ $("#btnTheme").innerHTML = isDark() ? SUN : MOON;
+  $("#btnTheme").setAttribute("aria-label", isDark() ? "Passer en mode clair" : "Passer en mode sombre"); }
+$("#btnTheme").onclick = () => { const t = isDark() ? "light" : "dark"; document.documentElement.dataset.theme = t;
+  try { localStorage.setItem("tiklive-theme", t); } catch(e) {} paintThemeBtn(); };
+paintThemeBtn();
+
+/* ---------- Salutation ---------- */
+function greet(nLive){ const h = new Date().getHours();
+  $("#hello").textContent = (h >= 18 || h < 5 ? "Bonsoir" : "Bonjour") + " Josias" +
+    (nLive ? `, ${nLive} live${nLive>1?"s":""} en cours` : "");
+  $("#helloHint").textContent = nLive ? "Ils s'enregistrent sur le serveur, même si tu fermes cette page."
+                                      : "Colle un lien pour enregistrer un live maintenant."; }
+
+/* ---------- Actions ---------- */
+function say(html, kind="info"){ const m = $("#msg"); m.className = "msg "+kind; m.innerHTML = html; }
 async function api(path, opts={}){
   const r = await fetch(path, {headers:{"Content-Type":"application/json"}, ...opts});
   let j = {}; try { j = await r.json(); } catch {}
   if (!r.ok) throw new Error(j.detail || "Erreur "+r.status);
   return j;
 }
-
 $("#btnRec").onclick = async () => {
-  const t = $("#target").value.trim(); if (!t) return say("Colle d'abord un lien ou un @pseudo.","err");
+  const t = $("#target").value.trim(); if (!t) { $("#target").focus(); return say("Colle d'abord un lien ou un @pseudo.","err"); }
   $("#btnRec").disabled = true; say("Recherche du live…");
   try {
     const j = await api("/api/record",{method:"POST",body:JSON.stringify({target:t})});
-    if (j.ok) { say("✅ Enregistrement lancé pour @"+esc(j.recording.username)+". Tu peux fermer cette page.","ok"); $("#target").value=""; }
-    else if (j.not_live) { say(esc(j.message)+' <button class="small secondary" id="offerWatch">Le surveiller pour enregistrer son prochain live</button>',"info");
-         $("#offerWatch").onclick = () => $("#btnWatch").click(); }
+    if (j.ok) { say("Enregistrement lancé pour @"+esc(j.recording.username)+". Tu peux fermer cette page.","ok"); $("#target").value=""; }
+    else if (j.not_live) { say(esc(j.message)+' <button class="btn btn-soft" id="offerWatch">Le surveiller</button>',"info");
+      $("#offerWatch").onclick = () => $("#btnWatch").click(); }
     else say(esc(j.message),"err");
   } catch(e){ say(esc(e.message),"err"); }
   $("#btnRec").disabled = false; refresh();
 };
-
 $("#btnWatch").onclick = async () => {
-  const t = $("#target").value.trim(); if (!t) return say("Colle d'abord un lien ou un @pseudo.","err");
-  try {
-    const j = await api("/api/watch",{method:"POST",body:JSON.stringify({target:t})});
-    say("👁 @"+esc(j.watch.username)+" est surveillé. Dès qu'il passe en live, l'enregistrement démarre.","ok");
-    $("#target").value="";
+  const t = $("#target").value.trim(); if (!t) { $("#target").focus(); return say("Colle d'abord un lien ou un @pseudo à surveiller.","err"); }
+  try { const j = await api("/api/watch",{method:"POST",body:JSON.stringify({target:t})});
+    say("@"+esc(j.watch.username)+" est surveillé. Son prochain live sera enregistré automatiquement.","ok"); $("#target").value="";
   } catch(e){ say(esc(e.message),"err"); }
   refresh();
 };
+$("#target").addEventListener("keydown", e => { if (e.key === "Enter") $("#btnRec").click(); });
+window.stopRec = async id => { if (!confirm("Arrêter l'enregistrement maintenant ? Ce qui a été capté sera gardé.")) return;
+  await api("/api/stop/"+id,{method:"POST"}); refresh(); };
+window.delRec = async id => { if (!confirm("Supprimer cette vidéo de l'outil ? (Si elle est sur ton Drive, elle y reste.)")) return;
+  try { await api("/api/recordings/"+id,{method:"DELETE"}); } catch(e){ alert(e.message); } refresh(); };
+window.unwatch = async u => { if (!confirm("Ne plus surveiller @"+u+" ?")) return;
+  await api("/api/watch/"+encodeURIComponent(u),{method:"DELETE"}); refresh(); };
+window.focusAdd = () => { $("#target").focus(); say("Colle le @pseudo du compte, puis appuie sur « Surveiller ce compte à la place ».","info"); };
 
-async function stopRec(id){ if(!confirm("Arrêter l'enregistrement maintenant ?")) return; await api("/api/stop/"+id,{method:"POST"}); refresh(); }
-async function delRec(id){ if(!confirm("Supprimer définitivement cette vidéo ?")) return;
-  try{ await api("/api/recordings/"+id,{method:"DELETE"}); }catch(e){ alert(e.message); } refresh(); }
-async function unwatch(u){ await api("/api/watch/"+encodeURIComponent(u),{method:"DELETE"}); refresh(); }
-
-const LABEL = {uploading:"Envoi sur Google Drive…", starting:"Démarrage…", recording:"En direct · enregistrement", finalizing:"Préparation de la vidéo…",
-  done:"Terminé", stopped:"Arrêté manuellement", interrupted:"Interrompu (serveur redémarré)", error:"Erreur"};
-const DOT = {uploading:"fin", starting:"live", recording:"live", finalizing:"fin", done:"done", stopped:"done", interrupted:"fin", error:"err"};
+/* ---------- Affichage ---------- */
+const LIVE = ["starting","recording","finalizing","uploading"];
+const STATUS = {done:"", stopped:"Arrêté", interrupted:"Interrompu", error:"Erreur"};
 
 function render(s){
-  const recs = s.recordings;
-  $("#recs").innerHTML = !recs.length ? '<div class="empty">Aucun enregistrement pour l\'instant.</div>' :
-    recs.map(r => {
-      const active = ["starting","recording"].includes(r.status);
-      const elapsed = active ? (Date.now() - new Date(r.started))/1000 : r.duration;
-      const parts = [LABEL[r.status]||r.status];
-      if (elapsed) parts.push(fmtDur(elapsed));
-      if (r.status === "uploading" && r.upload_pct != null) parts.push(r.upload_pct + " %");
-      if (r.size) parts.push(fmtSize(r.size));
-      if (r.resolution) parts.push(r.resolution);
-      parts.push(fmtDate(r.started));
-      if (r.source === "surveillance") parts.push("auto");
-      return `<div class="rec"><div class="dot ${DOT[r.status]||""}"></div><div class="info">
-        <div class="who">@${esc(r.username)}</div>
-        ${r.title ? `<div class="meta">${esc(r.title)}</div>` : ""}
-        <div class="meta">${parts.map(esc).join(" · ")}</div>
-        ${r.error ? `<div class="meta" style="color:#ff7a93">${esc(r.error)}</div>` : ""}
-        <div class="actions">
-          ${active ? `<button class="small danger" onclick="stopRec('${r.id}')">■ Arrêter</button>` : ""}
-          ${r.drive_link ? `<a class="dl" href="${esc(r.drive_link)}" target="_blank" rel="noopener">📁 Ouvrir dans Drive</a>` : ""}
-          ${r.file ? `<a class="dl" style="background:#23232b;color:var(--text)" href="/download/${r.id}">⬇ Télécharger</a>` : ""}
-          ${!active && !["finalizing","uploading"].includes(r.status) ? `<button class="small ghost" onclick="delRec('${r.id}')">Supprimer</button>` : ""}
-        </div></div></div>`;
-    }).join("");
-  const w = s.watchlist;
-  $("#watch").innerHTML = !w.length ? '<div class="empty">Aucun compte surveillé. Ajoute un @pseudo : dès qu\'il lance un live, l\'enregistrement démarre tout seul.</div>' :
-    w.map(x => `<div class="w"><div><div class="who">@${esc(x.username)}</div>
-      <div class="meta">${esc(x.last_status)}${x.last_check ? " · vérifié "+fmtDate(x.last_check) : ""}</div></div>
-      <button class="small ghost" onclick="unwatch('${esc(x.username)}')">Retirer</button></div>`).join("");
-  $("#disk").textContent = `Vidéos stockées : ${fmtSize(s.disk.recordings)} · Espace libre : ${fmtSize(s.disk.free)} · Vérification des comptes toutes les ${s.interval}s`;
-}
+  const recs = s.recordings, live = recs.filter(r => LIVE.includes(r.status)), past = recs.filter(r => !LIVE.includes(r.status));
+  greet(live.filter(r => ["starting","recording"].includes(r.status)).length);
 
+  $("#livesSec").hidden = !live.length;
+  $("#livesCount").textContent = live.length > 1 ? live.length + " enregistrements" : "";
+  $("#lives").innerHTML = live.map(r => {
+    const rec = ["starting","recording"].includes(r.status);
+    const el = (Date.now() - new Date(r.started))/1000;
+    let pill = '<span class="pill">En direct</span>', line = `${clock(el)} · ${fmtSize(r.size)}`, extra = "";
+    if (r.status === "finalizing") { pill = '<span class="pill wait">Préparation de la vidéo</span>'; line = fmtSize(r.size); }
+    if (r.status === "uploading") { pill = '<span class="pill wait">Envoi sur Drive</span>'; line = `${r.upload_pct ?? 0} % · ${fmtSize(r.size)}`;
+      extra = `<div class="bar"><i style="width:${r.upload_pct ?? 0}%"></i></div>`; }
+    if (r.source === "surveillance" && rec) line += " · détecté auto";
+    return `<div class="live"><div class="ring"><div style="background:${solid(r.username)}">${esc(ini(r.username))}</div></div>
+      <div class="info">${pill}<div class="name">@${esc(r.username)}${r.title ? " · "+esc(r.title) : ""}</div><div class="time">${line}</div>${extra}</div>
+      ${rec ? `<button class="stop" title="Arrêter" aria-label="Arrêter l'enregistrement" onclick="stopRec('${r.id}')"><i></i></button>` : ""}</div>`;
+  }).join("");
+
+  const liveNames = new Set(live.filter(r => ["starting","recording"].includes(r.status)).map(r => r.username));
+  $("#watch").innerHTML = s.watchlist.map(x => {
+    const on = liveNames.has(x.username), err = (x.last_status||"").startsWith("erreur");
+    const sub = on ? "en direct" : err ? "à vérifier" : x.last_check ? "en veille" : "…";
+    return `<div class="f ${on?"on":""}" title="${esc(x.last_status||"")}"><div class="c" style="background:${grad(x.username)}">${esc(ini(x.username))}</div>
+      <div class="n">${esc(x.username)}</div><div class="s">${sub}</div>
+      <button class="x" aria-label="Ne plus surveiller @${esc(x.username)}" onclick="unwatch('${esc(x.username)}')">×</button></div>`;
+  }).join("") + `<button class="f add" onclick="focusAdd()"><div class="c">+</div><div class="n">Ajouter</div></button>`;
+
+  $("#vidCount").textContent = past.length ? past.length + (past.length > 1 ? " enregistrées" : " enregistrée") : "";
+  $("#vids").innerHTML = !past.length
+    ? '<div class="empty">Tes vidéos apparaîtront ici après ton premier enregistrement.</div>'
+    : '<div class="vids">' + past.map(r => {
+        const st = STATUS[r.status];
+        const where = r.drive_link ? "dans ton Drive" : r.file ? "sur le serveur" : "";
+        return `<article class="vid"><div class="cover" style="background:${grad(r.username)}"><span class="ini">${esc(ini(r.username))}</span>
+          ${r.resolution ? `<span class="tag q">${esc(r.resolution)}</span>` : ""}
+          ${st ? `<span class="tag st">${st}</span>` : ""}
+          ${r.duration ? `<span class="tag dur">${clock(r.duration)}</span>` : ""}</div>
+          <div class="meta"><b>@${esc(r.username)}</b>${esc(dayLabel(r.started))}${where ? " · "+where : ""}${r.size ? " · "+fmtSize(r.size) : ""}</div>
+          ${r.error ? `<div class="err">${esc(r.error)}</div>` : ""}
+          <div class="acts">
+            ${r.drive_link ? `<a class="drive" href="${esc(r.drive_link)}" target="_blank" rel="noopener">Ouvrir</a>` : ""}
+            ${r.file ? `<a href="/download/${r.id}">Télécharger</a>` : ""}
+            <button class="del" title="Supprimer" aria-label="Supprimer" onclick="delRec('${r.id}')">✕</button>
+          </div></article>`;
+      }).join("") + '</div>';
+
+  $("#disk").textContent = `Espace libre sur le serveur : ${fmtSize(s.disk.free)} · comptes vérifiés toutes les ${s.interval} s`;
+}
 async function refresh(){ try { render(await api("/api/state")); } catch(e){} }
 refresh(); setInterval(refresh, 4000);
 
+/* ---------- Réglages ---------- */
 let SETTINGS = {};
-function setMsg(t,k="info"){ const m=$("#setMsg"); m.className="msg "+k; m.textContent=t; }
+function setMsg(t,k="info"){ const m = $("#setMsg"); m.className = "msg "+k; m.textContent = t; }
 async function loadSettings(){
   try {
     SETTINGS = await api("/api/settings");
@@ -245,10 +384,11 @@ async function loadSettings(){
     $("#driveDel").checked = SETTINGS.drive_delete_local;
     const d = $("#driveBadge"); d.textContent = SETTINGS.drive_connected ? "connecté" : "non connecté";
     d.className = "badge" + (SETTINGS.drive_connected ? " on" : "");
-    $("#btnDrive").textContent = SETTINGS.drive_connected ? "Reconnecter un autre compte Drive" : "Connecter mon Google Drive";
-    if (!SETTINGS.drive_available) $("#btnDrive").style.display = "none";
+    $("#btnDrive").textContent = SETTINGS.drive_connected ? "Connecter un autre compte Drive" : "Connecter mon Google Drive";
+    $("#btnDrive").className = "btn sm " + (SETTINGS.drive_connected ? "btn-soft" : "btn-ink");
+    if (!SETTINGS.drive_available) $("#btnDrive").hidden = true;
     if (SETTINGS.drive_available && !SETTINGS.drive_connected) $("#driveDetails").open = true;
-    const b = $("#waBadge"); b.textContent = SETTINGS.wa_configured ? "activé" : "non configuré";
+    const b = $("#waBadge"); b.textContent = SETTINGS.wa_configured ? "WhatsApp activé" : "WhatsApp non configuré";
     b.className = "badge" + (SETTINGS.wa_configured ? " on" : "");
     $("#ntfyTopic").textContent = SETTINGS.ntfy_topic || "";
   } catch(e){}
@@ -261,21 +401,17 @@ async function saveSettings(){
     retention_days:parseInt($("#retention").value,10)})});
   await loadSettings();
 }
-$("#btnSave").onclick = async () => { try { await saveSettings(); setMsg("✅ Réglages enregistrés.","ok"); } catch(e){ setMsg(e.message,"err"); } };
-$("#btnTest").onclick = async () => {
-  setMsg("Envoi du message test…");
+$("#btnSave").onclick = async () => { try { await saveSettings(); setMsg("Réglages enregistrés.","ok"); } catch(e){ setMsg(e.message,"err"); } };
+$("#btnTest").onclick = async () => { setMsg("Envoi du message test…");
   try { await saveSettings(); const j = await api("/api/settings/test",{method:"POST"}); setMsg(j.message, j.ok?"ok":"err"); }
-  catch(e){ setMsg(e.message,"err"); }
-};
-loadSettings();
-$("#btnCopy").onclick = () => { try { navigator.clipboard.writeText($("#ntfyTopic").textContent); $("#btnCopy").textContent = "Copié ✓"; } catch(e){} };
-$("#btnTestPhone").onclick = async () => {
-  const m = $("#phoneMsg"); m.className = "msg info"; m.textContent = "Envoi…";
-  try { const j = await api("/api/settings/test-phone",{method:"POST"}); m.className = "msg " + (j.ok?"ok":"err"); m.textContent = j.message; }
-  catch(e){ m.className = "msg err"; m.textContent = e.message; }
-};
+  catch(e){ setMsg(e.message,"err"); } };
+$("#btnCopy").onclick = async () => { try { await navigator.clipboard.writeText($("#ntfyTopic").textContent); $("#btnCopy").textContent = "Copié"; }
+  catch(e){ const r = document.createRange(); r.selectNodeContents($("#ntfyTopic")); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); } };
+$("#btnTestPhone").onclick = async () => { const m = $("#phoneMsg"); m.className = "msg info"; m.textContent = "Envoi…";
+  try { const j = await api("/api/settings/test-phone",{method:"POST"}); m.className = "msg "+(j.ok?"ok":"err"); m.textContent = j.message; }
+  catch(e){ m.className = "msg err"; m.textContent = e.message; } };
 $("#driveDel").onchange = () => saveSettings().catch(()=>{});
-$("#target").addEventListener("keydown", e => { if (e.key === "Enter") $("#btnRec").click(); });
+loadSettings();
 </script>
 </body>
 </html>
