@@ -150,12 +150,29 @@ def _via_ytdlp(username: str) -> tuple[str, str]:
     if not info.get("is_live", True):
         raise NotLive()
     fmts = [f for f in (info.get("formats") or []) if f.get("url")]
-    # On privilégie le FLV (plus stable pour l'enregistrement long), puis la meilleure qualité
-    fmts.sort(key=lambda f: ((f.get("ext") == "flv"), f.get("height") or 0, f.get("tbr") or 0))
-    url = fmts[-1]["url"] if fmts else info.get("url")
-    if not url:
+    if not fmts:
+        if info.get("url"):
+            return info["url"], info.get("title") or ""
         raise NotLive()
-    return url, info.get("title") or ""
+    # Qualité maximale d'abord (« origin » = qualité envoyée par le créateur), puis le FLV
+    # (plus stable sur les longs lives) à qualité égale, puis le débit le plus élevé.
+    rank = {"origin": 100, "origion": 100, "uhd": 90, "full_hd1": 90, "hd": 70, "hd1": 70,
+            "sd": 40, "sd1": 40, "sd2": 30, "ld": 10}
+
+    def key(f):
+        fid = (f.get("format_id") or "").lower()
+        name = fid.split("-", 1)[-1]
+        q = rank.get(name, 0)
+        if fid in ("rtmp-pull", "hls-pull"):
+            q = 50  # flux « par défaut » : qualité variable, on préfère les flux nommés
+        return (q, f.get("ext") == "flv", f.get("tbr") or 0)
+
+    fmts.sort(key=key)
+    best = fmts[-1]
+    log.info("@%s qualités disponibles : %s → choisi : %s (%s, %s kbps)", username,
+             ", ".join(f.get("format_id", "?") for f in fmts), best.get("format_id"),
+             best.get("resolution") or "?", best.get("tbr") or "?")
+    return best["url"], info.get("title") or ""
 
 
 def _via_webapi(username: str) -> tuple[str, str]:
@@ -185,18 +202,20 @@ def _via_webapi(username: str) -> tuple[str, str]:
     if data.get("status") != 2:  # 2 = en direct
         raise NotLive()
     stream = data.get("stream_url") or {}
-    flv = stream.get("flv_pull_url") or {}
-    for q in ("FULL_HD1", "HD1", "SD1", "SD2"):
-        if flv.get(q):
-            return flv[q], data.get("title") or ""
-    # format plus récent : JSON imbriqué
+    # 1) qualité « origine » (maximale) dans les données détaillées
     try:
         sd = json.loads(stream["live_core_sdk_data"]["pull_data"]["stream_data"])["data"]
         for q in ("origin", "uhd", "hd", "sd", "ld"):
             if q in sd and sd[q]["main"].get("flv"):
+                log.info("@%s qualité choisie (web) : %s", username, q)
                 return sd[q]["main"]["flv"], data.get("title") or ""
     except Exception:
         pass
+    flv = stream.get("flv_pull_url") or {}
+    for q in ("FULL_HD1", "HD1", "SD1", "SD2"):
+        if flv.get(q):
+            log.info("@%s qualité choisie (web) : %s", username, q)
+            return flv[q], data.get("title") or ""
     if stream.get("rtmp_pull_url"):
         return stream["rtmp_pull_url"], data.get("title") or ""
     raise NotLive()
@@ -273,7 +292,7 @@ def _finalize(rec_id: str):
     status = rec.get("end_status", "done")
     size = final.stat().st_size
     _update(rec_id, status=status, file=final.name, size=size, duration=dur,
-            ended=rec.get("ended") or _now())
+            resolution=_probe_resolution(final), ended=rec.get("ended") or _now())
     if G.connected():
         threading.Thread(target=upload_to_drive, args=(rec_id,), daemon=True).start()
     else:
@@ -286,7 +305,8 @@ NOTE = {"stopped": " (arrêté manuellement)", "interrupted": " (interrompu par 
 def _notify_done(rec_id: str):
     r = STATE["recordings"][rec_id]
     head = f"✅ TikLive : la vidéo du live de @{r['username']} est prête{NOTE.get(r['status'], '')}.\n" \
-           f"⏱ {fmt_dur(r.get('duration'))} · 💾 {fmt_size(r.get('size'))}\n"
+           f"⏱ {fmt_dur(r.get('duration'))} · 💾 {fmt_size(r.get('size'))}" \
+           f"{(' · 🎞 ' + r['resolution']) if r.get('resolution') else ''}\n"
     if r.get("drive_link"):
         N.notify("done", head + f"📁 Elle est dans ton Google Drive (dossier « {G.FOLDER_NAME} ») :\n{r['drive_link']}")
     else:
@@ -324,6 +344,17 @@ def upload_to_drive(rec_id: str):
                 error=f"Envoi sur Google Drive échoué : {str(e)[:150]}. La vidéo reste téléchargeable ici.")
         N.notify("error", f"⚠️ TikLive : la vidéo de @{r['username']} n'a pas pu être envoyée sur Google Drive. "
                           f"Elle reste téléchargeable dans l'outil.{N.link()}")
+
+
+def _probe_resolution(path: Path) -> str | None:
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                            "stream=width,height", "-of", "csv=p=0", str(path)],
+                           capture_output=True, text=True, timeout=60)
+        w, h = [int(x) for x in r.stdout.strip().split(",")[:2]]
+        return f"{min(w, h)}p"
+    except Exception:
+        return None
 
 
 def _probe_duration(path: Path) -> float | None:

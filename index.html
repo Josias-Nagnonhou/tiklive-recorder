@@ -207,6 +207,7 @@ function render(s){
       if (elapsed) parts.push(fmtDur(elapsed));
       if (r.status === "uploading" && r.upload_pct != null) parts.push(r.upload_pct + " %");
       if (r.size) parts.push(fmtSize(r.size));
+      if (r.resolution) parts.push(r.resolution);
       parts.push(fmtDate(r.started));
       if (r.source === "surveillance") parts.push("auto");
       return `<div class="rec"><div class="dot ${DOT[r.status]||""}"></div><div class="info">
