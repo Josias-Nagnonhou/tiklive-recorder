@@ -123,6 +123,12 @@ h2 small.block{flex-basis:100%}
 .vid .acts a.drive{background:var(--ink);color:var(--on-ink)}
 .vid .acts .del{flex:0 0 36px;color:var(--muted)}
 
+/* Photos de profil (posées par-dessus les initiales, qui restent en secours) */
+.ring div,.f .c{position:relative;overflow:hidden}
+.av{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit;background:var(--soft)}
+.cover{overflow:hidden}
+.cover .bg{position:absolute;inset:-12%;width:124%;height:124%;object-fit:cover;filter:blur(18px) saturate(1.25);opacity:.85}
+.cover .pic{position:absolute;inset:0;margin:auto;height:auto;width:46%;aspect-ratio:1;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,.85);box-shadow:0 8px 24px -8px rgba(0,0,0,.5)}
 .empty{background:var(--card);border:1px dashed var(--line);border-radius:18px;padding:20px;color:var(--muted);font-size:14px;text-align:center}
 
 /* Réglages */
@@ -266,6 +272,11 @@ const HUES = [[350,85,60],[192,72,48],[262,60,58],[24,88,56],[160,55,40],[220,70
 function tint(name){ let h = 0; for (const c of name) h = (h*31 + c.charCodeAt(0)) >>> 0; return HUES[h % HUES.length]; }
 const solid = n => { const [h,s,l] = tint(n); return `hsl(${h} ${s}% ${l}%)`; };
 const grad = n => { const [h,s,l] = tint(n); return `linear-gradient(160deg,hsl(${h} ${s}% ${l}%),hsl(${(h+40)%360} ${s}% ${Math.max(l-18,20)}%))`; };
+// Photo de profil : si elle n'existe pas encore, on garde les initiales et on réessaie plus tard
+const NOAV = new Map();
+window.avFail = (img, n) => { NOAV.set(n, Date.now()); img.remove(); };
+const avOk = n => !NOAV.has(n) || Date.now() - NOAV.get(n) > 60000;
+const avImg = (n, cls="av") => avOk(n) ? `<img class="${cls}" src="/avatar/${encodeURIComponent(n)}" alt="" loading="lazy" onerror="avFail(this,'${esc(n)}')">` : "";
 const ini = n => (n.replace(/[^a-z0-9]/gi," ").trim().split(/\s+/).map(w=>w[0]).join("").slice(0,2) || n.slice(0,2)).toUpperCase();
 
 /* ---------- Thème clair / sombre ---------- */
@@ -340,7 +351,7 @@ function render(s){
     if (r.status === "uploading") { pill = '<span class="pill wait">Envoi sur Drive</span>'; line = `${r.upload_pct ?? 0} % · ${fmtSize(r.size)}`;
       extra = `<div class="bar"><i style="width:${r.upload_pct ?? 0}%"></i></div>`; }
     if (r.source === "surveillance" && rec) line += " · détecté auto";
-    return `<div class="live"><div class="ring"><div style="background:${solid(r.username)}">${esc(ini(r.username))}</div></div>
+    return `<div class="live"><div class="ring"><div style="background:${solid(r.username)}">${esc(ini(r.username))}${avImg(r.username)}</div></div>
       <div class="info">${pill}<div class="name">@${esc(r.username)}${r.title ? " · "+esc(r.title) : ""}</div><div class="time">${line}</div>${extra}</div>
       ${rec ? `<button class="stop" title="Arrêter" aria-label="Arrêter l'enregistrement" onclick="stopRec('${r.id}')"><i></i></button>` : ""}</div>`;
   }).join("");
@@ -349,7 +360,7 @@ function render(s){
   $("#watch").innerHTML = s.watchlist.map(x => {
     const on = liveNames.has(x.username), err = (x.last_status||"").startsWith("erreur");
     const sub = on ? "en direct" : err ? "à vérifier" : x.last_check ? "en veille" : "…";
-    return `<div class="f ${on?"on":""}" title="${esc(x.last_status||"")}"><div class="c" style="background:${grad(x.username)}">${esc(ini(x.username))}</div>
+    return `<div class="f ${on?"on":""}" title="${esc(x.last_status||"")}"><div class="c" style="background:${grad(x.username)}">${esc(ini(x.username))}${avImg(x.username)}</div>
       <div class="n">${esc(x.username)}</div><div class="s">${sub}</div>
       <button class="x" aria-label="Ne plus surveiller @${esc(x.username)}" onclick="unwatch('${esc(x.username)}')">×</button></div>`;
   }).join("") + `<button class="f add" onclick="focusAdd()"><div class="c">+</div><div class="n">Ajouter</div></button>`;
@@ -360,7 +371,7 @@ function render(s){
     : '<div class="vids">' + past.map(r => {
         const st = STATUS[r.status];
         const where = r.drive_link ? "dans ton Drive" : r.file ? "sur le serveur" : "";
-        return `<article class="vid"><div class="cover" style="background:${grad(r.username)}"><span class="ini">${esc(ini(r.username))}</span>
+        return `<article class="vid"><div class="cover" style="background:${grad(r.username)}"><span class="ini">${esc(ini(r.username))}</span>${avImg(r.username,"bg")}${avImg(r.username,"pic")}
           ${r.resolution ? `<span class="tag q">${esc(r.resolution)}</span>` : ""}
           ${st ? `<span class="tag st">${st}</span>` : ""}
           ${r.duration ? `<span class="tag dur">${clock(r.duration)}</span>` : ""}</div>

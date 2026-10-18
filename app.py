@@ -15,6 +15,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
+import avatars as A
 import gdrive as G
 import notify as N
 import recorder as R
@@ -90,6 +91,15 @@ def static_file(name: str):
     types = {".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json"}
     return FileResponse(path, media_type=types.get(path.suffix, "application/octet-stream"),
                         headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/avatar/{username}")
+def avatar(username: str):
+    p = A.path_for(username)
+    if not p.exists():
+        A.ensure(username, R.TIKTOK_COOKIE)
+        raise HTTPException(404)
+    return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
 
 
 @app.get("/health")

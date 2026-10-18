@@ -23,6 +23,7 @@ from pathlib import Path
 
 import httpx
 
+import avatars as A
 import gdrive as G
 import notify as N
 
@@ -457,6 +458,7 @@ def start_recording(text_or_target, source: str = "manuel") -> dict:
     _stop_flags[rec_id] = threading.Event()
     threading.Thread(target=_record_loop, args=(rec_id, target, stream_url), daemon=True).start()
     log.info("▶ Enregistrement lancé: @%s (%s)", target["username"], rec_id)
+    A.ensure(target["username"], TIKTOK_COOKIE)
     if target["kind"] == "tiktok":
         auto = "Live détecté automatiquement" if source == "surveillance" else "Enregistrement lancé"
         N.notify("start", f"🔴 TikLive : {auto} pour @{target['username']}"
@@ -499,6 +501,7 @@ def add_watch(text: str) -> dict:
                                           "last_check": None, "last_status": "en attente"})
         save_state()
     _wake.set()
+    A.ensure(u, TIKTOK_COOKIE, force=True)
     return STATE["watchlist"][u]
 
 
@@ -516,6 +519,7 @@ def _watch_loop():
         for u in list(STATE["watchlist"].keys()):
             if u not in STATE["watchlist"]:
                 continue
+            A.ensure(u, TIKTOK_COOKIE)
             status = "pas en live"
             if active_for(u):
                 status = "🔴 en cours d'enregistrement"
@@ -661,6 +665,8 @@ def start_background():
     recover_after_restart()
     threading.Thread(target=_watch_loop, daemon=True).start()
     threading.Thread(target=_cleanup_loop, daemon=True).start()
+    for u in {r["username"] for r in STATE["recordings"].values()}:
+        A.ensure(u, TIKTOK_COOKIE)
 
 
 def disk_info() -> dict:
