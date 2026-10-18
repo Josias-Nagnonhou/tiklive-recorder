@@ -21,11 +21,16 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
 
 app = FastAPI(title="TikLive Recorder")
+PUBLIC_PATHS = {"/health", "/accueil", "/confidentialite", "/oauth/callback"}
+
+_PAGE = """<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{t}</title><style>body{{font-family:system-ui,sans-serif;max-width:680px;margin:40px auto;padding:0 16px;line-height:1.6;color:#222}}</style>
+</head><body><h1>{t}</h1>{b}</body></html>"""
 
 
 @app.middleware("http")
 async def auth(request: Request, call_next):
-    if not APP_PASSWORD or request.url.path == "/health":
+    if not APP_PASSWORD or request.url.path in PUBLIC_PATHS:
         return await call_next(request)
     h = request.headers.get("authorization", "")
     if h.startswith("Basic "):
@@ -45,6 +50,23 @@ def _startup():
 
 class Target(BaseModel):
     target: str
+
+
+@app.get("/accueil", response_class=HTMLResponse)
+def accueil():
+    return _PAGE.format(t="TikLive Recorder", b="<p>TikLive Recorder est un outil personnel et privé qui enregistre "
+        "des lives TikTok publics pour son propriétaire, et peut déposer les vidéos dans son propre Google Drive.</p>"
+        "<p>Accès réservé au propriétaire. <a href='/confidentialite'>Règles de confidentialité</a></p>")
+
+
+@app.get("/confidentialite", response_class=HTMLResponse)
+def confidentialite():
+    return _PAGE.format(t="Règles de confidentialité", b="<p>TikLive Recorder est utilisé uniquement par son "
+        "propriétaire. L'accès à Google Drive sert seulement à déposer les vidéos enregistrées dans un dossier "
+        "créé par l'outil (autorisation « drive.file »). L'outil ne lit pas, ne partage pas et ne vend aucune autre "
+        "donnée. Les identifiants Google sont stockés uniquement sur le serveur privé de l'outil et peuvent être "
+        "révoqués à tout moment depuis https://myaccount.google.com/permissions.</p>"
+        "<p>Contact : propriétaire de l'outil (Josias).</p>")
 
 
 @app.get("/health")
