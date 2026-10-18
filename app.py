@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 
+import notify as N
 import recorder as R
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -111,6 +112,48 @@ def watch(t: Target):
 def unwatch(username: str):
     R.remove_watch(username)
     return {"ok": True}
+
+
+class Settings(BaseModel):
+    wa_phone: str | None = None
+    wa_apikey: str | None = None
+    retention_days: int | None = None
+    notify_start: bool | None = None
+    notify_done: bool | None = None
+    notify_error: bool | None = None
+    notify_disk: bool | None = None
+
+
+def _public_settings():
+    s = dict(R.STATE["settings"])
+    key = s.get("wa_apikey") or ""
+    s["wa_apikey"] = ("•" * max(0, len(key) - 2) + key[-2:]) if key else ""
+    s["wa_configured"] = bool(s.get("wa_phone") and key)
+    return s
+
+
+@app.get("/api/settings")
+def get_settings():
+    return _public_settings()
+
+
+@app.post("/api/settings")
+def set_settings(body: Settings):
+    data = body.model_dump(exclude_none=True)
+    if "wa_apikey" in data and "•" in data["wa_apikey"]:
+        data.pop("wa_apikey")  # champ masqué non modifié
+    if "retention_days" in data:
+        data["retention_days"] = max(0, min(365, data["retention_days"]))
+    with R._lock:
+        R.STATE["settings"].update(data)
+        R.save_state()
+    return _public_settings()
+
+
+@app.post("/api/settings/test")
+def test_whatsapp():
+    ok, msg = N.send_whatsapp("🔔 TikLive Recorder : test réussi ! Tu recevras ici les alertes de tes lives.")
+    return {"ok": ok, "message": msg}
 
 
 INDEX = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")

@@ -23,6 +23,8 @@ from pathlib import Path
 
 import httpx
 
+import notify as N
+
 log = logging.getLogger("tiklive")
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "./data")).resolve()
@@ -46,13 +48,32 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+DEFAULT_SETTINGS = {"wa_phone": "", "wa_apikey": "", "retention_days": 7,
+                    "notify_start": True, "notify_done": True, "notify_error": True, "notify_disk": True}
+
+
 def _load_state() -> dict:
+    st = {"recordings": {}, "watchlist": {}}
     if STATE_FILE.exists():
         try:
-            return json.loads(STATE_FILE.read_text())
+            st = json.loads(STATE_FILE.read_text())
         except Exception:
             log.exception("state.json illisible, on repart de zéro")
-    return {"recordings": {}, "watchlist": {}}
+    st.setdefault("settings", {})
+    for k, v in DEFAULT_SETTINGS.items():
+        st["settings"].setdefault(k, v)
+    return st
+
+
+def fmt_size(b) -> str:
+    b = b or 0
+    return f"{b/1e9:.2f} Go" if b > 1e9 else f"{b/1e6:.0f} Mo"
+
+
+def fmt_dur(sec) -> str:
+    sec = int(sec or 0)
+    h, m = sec // 3600, sec % 3600 // 60
+    return f"{h}h{m:02d}" if h else f"{m} min"
 
 
 STATE = _load_state()
@@ -219,6 +240,8 @@ def _finalize(rec_id: str):
     parts = sorted(p for p in folder.glob("part*.ts") if p.stat().st_size > 1024)
     if not parts:
         _update(rec_id, status="error", error="Aucune vidéo n'a pu être enregistrée.")
+        N.notify("error", f"⚠️ TikLive : l'enregistrement du live de @{rec['username']} a échoué "
+                          f"(aucune image reçue).{N.link()}")
         return
     _update(rec_id, status="finalizing")
     final = REC_DIR / f"{rec['filename']}.mp4"
@@ -240,8 +263,15 @@ def _finalize(rec_id: str):
         log.warning("remux mp4 échoué (%s), fichier .ts conservé", r.stderr[-300:])
     shutil.rmtree(folder, ignore_errors=True)
     dur = _probe_duration(final)
-    _update(rec_id, status=rec.get("end_status", "done"), file=final.name,
-            size=final.stat().st_size, duration=dur, ended=rec.get("ended") or _now())
+    status = rec.get("end_status", "done")
+    size = final.stat().st_size
+    _update(rec_id, status=status, file=final.name, size=size, duration=dur,
+            ended=rec.get("ended") or _now())
+    note = {"stopped": " (arrêté manuellement)", "interrupted": " (interrompu par un redémarrage du serveur)"}
+    keep = STATE["settings"].get("retention_days", 7)
+    N.notify("done", f"✅ TikLive : la vidéo du live de @{rec['username']} est prête{note.get(status, '')}.\n"
+                     f"⏱ {fmt_dur(dur)} · 💾 {fmt_size(size)}\n"
+                     f"Pense à la télécharger : elle sera supprimée automatiquement dans {keep} jours.{N.link()}")
 
 
 def _probe_duration(path: Path) -> float | None:
@@ -344,6 +374,11 @@ def start_recording(text_or_target, source: str = "manuel") -> dict:
     _stop_flags[rec_id] = threading.Event()
     threading.Thread(target=_record_loop, args=(rec_id, target, stream_url), daemon=True).start()
     log.info("▶ Enregistrement lancé: @%s (%s)", target["username"], rec_id)
+    if target["kind"] == "tiktok":
+        auto = "Live détecté automatiquement" if source == "surveillance" else "Enregistrement lancé"
+        N.notify("start", f"🔴 TikLive : {auto} pour @{target['username']}"
+                          f"{(' — « ' + title[:80] + ' »') if title else ''}.\n"
+                          f"Je t'envoie un message dès que la vidéo est prête.")
     return rec
 
 
@@ -407,8 +442,14 @@ def _watch_loop():
                     status = "🔴 live détecté → enregistrement lancé"
                 except NotLive:
                     pass
+                except TikTokUnreachable:
+                    status = "erreur: TikTok ne répond pas au serveur"
                 except Exception as e:
                     status = f"erreur: {str(e)[:120]}"
+            prev = (STATE["watchlist"].get(u) or {}).get("last_status", "")
+            if status.startswith("erreur") and not prev.startswith("erreur"):
+                N.notify("error", f"⚠️ TikLive : je n'arrive plus à vérifier @{u} ({status[8:]}). "
+                                  f"Je continue d'essayer.{N.link()}")
             with _lock:
                 if u in STATE["watchlist"]:
                     STATE["watchlist"][u].update(last_check=_now(), last_status=status)
@@ -429,9 +470,54 @@ def recover_after_restart():
             _finalize(rid)
 
 
+LOW_DISK = 2e9  # alerte sous 2 Go libres
+
+
+def cleanup_once():
+    """Supprime les vidéos terminées depuis plus de N jours ; alerte si le disque est presque plein."""
+    days = float(STATE["settings"].get("retention_days") or 0)
+    removed = []
+    if days > 0:
+        limit = time.time() - days * 86400
+        for rid, r in list(STATE["recordings"].items()):
+            if r["status"] in ("recording", "starting", "finalizing") or not r.get("ended"):
+                continue
+            try:
+                ended = datetime.fromisoformat(r["ended"]).timestamp()
+            except Exception:
+                continue
+            if ended < limit and delete_recording(rid):
+                removed.append(r["username"])
+    if removed:
+        log.info("Nettoyage : %d vidéo(s) supprimée(s)", len(removed))
+    free = shutil.disk_usage(DATA_DIR).free
+    with _lock:
+        warned = STATE.setdefault("flags", {}).get("disk_warned", False)
+        if free < LOW_DISK and not warned:
+            STATE["flags"]["disk_warned"] = True
+            save_state()
+            N.notify("disk", f"💾 TikLive : il ne reste que {fmt_size(free)} d'espace sur le serveur. "
+                             f"Télécharge puis supprime quelques vidéos pour ne pas bloquer les prochains lives."
+                             f"{N.link()}")
+        elif free > LOW_DISK * 1.5 and warned:
+            STATE["flags"]["disk_warned"] = False
+            save_state()
+    return removed
+
+
+def _cleanup_loop():
+    while True:
+        try:
+            cleanup_once()
+        except Exception:
+            log.exception("erreur pendant le nettoyage")
+        time.sleep(3600)
+
+
 def start_background():
     recover_after_restart()
     threading.Thread(target=_watch_loop, daemon=True).start()
+    threading.Thread(target=_cleanup_loop, daemon=True).start()
 
 
 def disk_info() -> dict:

@@ -52,6 +52,17 @@
   .empty{color:var(--muted);font-size:14px}
   .w{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
   .w:first-child{border-top:0;padding-top:0}
+  details summary{cursor:pointer;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center}
+  details summary::-webkit-details-marker{display:none}
+  .badge{font-size:12px;padding:3px 8px;border-radius:20px;background:#23232b;color:var(--muted);font-weight:500}
+  .badge.on{background:#103322;color:var(--ok)}
+  .steps{color:var(--muted);font-size:14px;line-height:1.55;padding-left:20px;margin:14px 0}
+  .steps b{color:var(--text)} .steps a{color:var(--accent2)}
+  .steps code{background:#0f0f13;border:1px solid var(--line);padding:2px 6px;border-radius:6px;color:var(--text)}
+  label.f{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}
+  select{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:#0f0f13;color:var(--text);font-size:15px}
+  .chk{display:flex;align-items:center;gap:10px;margin:8px 0;font-size:14px}
+  .chk input{width:18px;height:18px;accent-color:var(--accent)}
   footer{margin-top:30px;color:var(--muted);font-size:12px;text-align:center}
 </style>
 </head>
@@ -76,6 +87,37 @@
 
   <h2>Comptes surveillés</h2>
   <div class="card" id="watch"><div class="empty">Aucun compte surveillé. Ajoute un @pseudo : dès qu'il lance un live, l'enregistrement démarre tout seul.</div></div>
+
+  <h2>Réglages</h2>
+  <div class="card">
+    <details id="setDetails">
+      <summary>📲 Notifications WhatsApp <span class="badge" id="waBadge">non configuré</span></summary>
+      <ol class="steps">
+        <li>Ouvre <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noopener">cette page CallMeBot</a> et <b>enregistre dans tes contacts</b> le numéro WhatsApp indiqué.</li>
+        <li>Envoie à ce contact, sur WhatsApp, exactement ce message :<br><code>I allow callmebot to send me messages</code></li>
+        <li>Tu reçois une réponse avec ton <b>apikey</b> (un code de chiffres). Colle-le ci-dessous avec ton numéro, puis clique sur <b>Enregistrer</b> et <b>Tester</b>.</li>
+      </ol>
+      <label class="f">Ton numéro WhatsApp (avec l'indicatif, ex. +229 01 97 00 00 00)</label>
+      <input id="waPhone" placeholder="+229…" inputmode="tel">
+      <label class="f">Ton apikey CallMeBot</label>
+      <input id="waKey" placeholder="ex. 1234567" inputmode="numeric">
+      <label class="f">M'envoyer un message quand…</label>
+      <div class="chk"><input type="checkbox" id="nStart"> un live commence à être enregistré</div>
+      <div class="chk"><input type="checkbox" id="nDone"> la vidéo est prête à télécharger</div>
+      <div class="chk"><input type="checkbox" id="nError"> il y a un problème</div>
+      <div class="chk"><input type="checkbox" id="nDisk"> l'espace de stockage est presque plein</div>
+      <label class="f">🧹 Supprimer automatiquement les vidéos après</label>
+      <select id="retention">
+        <option value="2">2 jours</option><option value="3">3 jours</option><option value="7">7 jours</option>
+        <option value="14">14 jours</option><option value="30">30 jours</option><option value="0">Jamais</option>
+      </select>
+      <div class="btns">
+        <button class="primary" id="btnSave">Enregistrer</button>
+        <button class="secondary" id="btnTest">Tester WhatsApp</button>
+      </div>
+      <div class="msg" id="setMsg"></div>
+    </details>
+  </div>
 
   <footer id="disk"></footer>
 </div>
@@ -161,6 +203,36 @@ function render(s){
 
 async function refresh(){ try { render(await api("/api/state")); } catch(e){} }
 refresh(); setInterval(refresh, 4000);
+
+let SETTINGS = {};
+function setMsg(t,k="info"){ const m=$("#setMsg"); m.className="msg "+k; m.textContent=t; }
+async function loadSettings(){
+  try {
+    SETTINGS = await api("/api/settings");
+    $("#waPhone").value = SETTINGS.wa_phone || ""; $("#waKey").value = SETTINGS.wa_apikey || "";
+    $("#nStart").checked = SETTINGS.notify_start; $("#nDone").checked = SETTINGS.notify_done;
+    $("#nError").checked = SETTINGS.notify_error; $("#nDisk").checked = SETTINGS.notify_disk;
+    $("#retention").value = String(SETTINGS.retention_days);
+    const b = $("#waBadge"); b.textContent = SETTINGS.wa_configured ? "activé" : "non configuré";
+    b.className = "badge" + (SETTINGS.wa_configured ? " on" : "");
+    if (!SETTINGS.wa_configured) $("#setDetails").open = true;
+  } catch(e){}
+}
+async function saveSettings(){
+  SETTINGS = await api("/api/settings",{method:"POST",body:JSON.stringify({
+    wa_phone:$("#waPhone").value.trim(), wa_apikey:$("#waKey").value.trim(),
+    notify_start:$("#nStart").checked, notify_done:$("#nDone").checked,
+    notify_error:$("#nError").checked, notify_disk:$("#nDisk").checked,
+    retention_days:parseInt($("#retention").value,10)})});
+  await loadSettings();
+}
+$("#btnSave").onclick = async () => { try { await saveSettings(); setMsg("✅ Réglages enregistrés.","ok"); } catch(e){ setMsg(e.message,"err"); } };
+$("#btnTest").onclick = async () => {
+  setMsg("Envoi du message test…");
+  try { await saveSettings(); const j = await api("/api/settings/test",{method:"POST"}); setMsg(j.message, j.ok?"ok":"err"); }
+  catch(e){ setMsg(e.message,"err"); }
+};
+loadSettings();
 $("#target").addEventListener("keydown", e => { if (e.key === "Enter") $("#btnRec").click(); });
 </script>
 </body>
