@@ -206,6 +206,12 @@ def oauth_callback(code: str = "", state: str = "", error: str = ""):
                         f"dans le dossier « {G.FOLDER_NAME} » de ton Drive.</p><p><a href='/'>Retour à l'outil</a></p>")
 
 
+@app.post("/api/settings/test-phone")
+def test_phone():
+    ok, msg = N.send_ntfy("🔔 TikLive Recorder\nTest réussi ! Tu recevras ici les alertes de tes lives.")
+    return {"ok": ok, "message": msg}
+
+
 @app.post("/api/settings/test")
 def test_whatsapp():
     ok, msg = N.send_whatsapp("🔔 TikLive Recorder : test réussi ! Tu recevras ici les alertes de tes lives.")

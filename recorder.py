@@ -49,7 +49,7 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-DEFAULT_SETTINGS = {"wa_phone": "", "wa_apikey": "", "retention_days": 7,
+DEFAULT_SETTINGS = {"ntfy_topic": "", "wa_phone": "", "wa_apikey": "", "retention_days": 7,
                     "drive_delete_local": True, "notify_start": True, "notify_done": True, "notify_error": True, "notify_disk": True}
 
 
@@ -63,6 +63,8 @@ def _load_state() -> dict:
     st.setdefault("settings", {})
     for k, v in DEFAULT_SETTINGS.items():
         st["settings"].setdefault(k, v)
+    if not st["settings"]["ntfy_topic"]:
+        st["settings"]["ntfy_topic"] = "tiklive-" + uuid.uuid4().hex[:10]  # nom secret, impossible à deviner
     return st
 
 
@@ -525,6 +527,8 @@ def restore_from_drive():
                 STATE[k] = remote[k]
         for k, v in DEFAULT_SETTINGS.items():
             STATE["settings"].setdefault(k, v)
+        if not STATE["settings"].get("ntfy_topic"):
+            STATE["settings"]["ntfy_topic"] = "tiklive-" + uuid.uuid4().hex[:10]
         for rid, r in STATE["recordings"].items():
             local = REC_DIR / r["file"] if r.get("file") else None
             if local is None or not local.exists():

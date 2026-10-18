@@ -99,9 +99,25 @@
     </details>
   </div>
 
+  <div class="card" style="margin-bottom:12px">
+    <details id="ntfyDetails" open>
+      <summary>🔔 Notifications sur ton téléphone <span class="badge on">gratuit</span></summary>
+      <ol class="steps">
+        <li>Installe l'application gratuite <b>ntfy</b> :
+          <a href="https://play.google.com/store/apps/details?id=io.heckel.ntfy" target="_blank" rel="noopener">Android (Play Store)</a> ·
+          <a href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank" rel="noopener">iPhone (App Store)</a></li>
+        <li>Ouvre-la, appuie sur le bouton <b>+</b>, puis écris ce nom exactement :<br>
+          <code id="ntfyTopic">…</code> <button class="small ghost" id="btnCopy">Copier</button></li>
+        <li>Appuie sur <b>S'abonner</b> (Subscribe), puis reviens ici et clique sur <b>Tester</b>.</li>
+      </ol>
+      <div class="btns"><button class="primary" id="btnTestPhone">Tester la notification</button></div>
+      <div class="msg" id="phoneMsg"></div>
+    </details>
+  </div>
+
   <div class="card">
     <details id="setDetails">
-      <summary>📲 Notifications WhatsApp <span class="badge" id="waBadge">non configuré</span></summary>
+      <summary>📲 WhatsApp et réglages <span class="badge" id="waBadge">non configuré</span></summary>
       <ol class="steps">
         <li>Ouvre <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noopener">cette page CallMeBot</a> et <b>enregistre dans tes contacts</b> le numéro WhatsApp indiqué.</li>
         <li>Envoie à ce contact, sur WhatsApp, exactement ce message :<br><code>I allow callmebot to send me messages</code></li>
@@ -233,7 +249,7 @@ async function loadSettings(){
     if (SETTINGS.drive_available && !SETTINGS.drive_connected) $("#driveDetails").open = true;
     const b = $("#waBadge"); b.textContent = SETTINGS.wa_configured ? "activé" : "non configuré";
     b.className = "badge" + (SETTINGS.wa_configured ? " on" : "");
-    if (!SETTINGS.wa_configured) $("#setDetails").open = true;
+    $("#ntfyTopic").textContent = SETTINGS.ntfy_topic || "";
   } catch(e){}
 }
 async function saveSettings(){
@@ -251,6 +267,12 @@ $("#btnTest").onclick = async () => {
   catch(e){ setMsg(e.message,"err"); }
 };
 loadSettings();
+$("#btnCopy").onclick = () => { try { navigator.clipboard.writeText($("#ntfyTopic").textContent); $("#btnCopy").textContent = "Copié ✓"; } catch(e){} };
+$("#btnTestPhone").onclick = async () => {
+  const m = $("#phoneMsg"); m.className = "msg info"; m.textContent = "Envoi…";
+  try { const j = await api("/api/settings/test-phone",{method:"POST"}); m.className = "msg " + (j.ok?"ok":"err"); m.textContent = j.message; }
+  catch(e){ m.className = "msg err"; m.textContent = e.message; }
+};
 $("#driveDel").onchange = () => saveSettings().catch(()=>{});
 $("#target").addEventListener("keydown", e => { if (e.key === "Enter") $("#btnRec").click(); });
 </script>
