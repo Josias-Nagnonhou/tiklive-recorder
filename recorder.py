@@ -23,6 +23,7 @@ from pathlib import Path
 
 import httpx
 
+import gdrive as G
 import notify as N
 
 log = logging.getLogger("tiklive")
@@ -49,7 +50,7 @@ def _now() -> str:
 
 
 DEFAULT_SETTINGS = {"wa_phone": "", "wa_apikey": "", "retention_days": 7,
-                    "notify_start": True, "notify_done": True, "notify_error": True, "notify_disk": True}
+                    "drive_delete_local": True, "notify_start": True, "notify_done": True, "notify_error": True, "notify_disk": True}
 
 
 def _load_state() -> dict:
@@ -76,7 +77,10 @@ def fmt_dur(sec) -> str:
     return f"{h}h{m:02d}" if h else f"{m} min"
 
 
+FRESH_BOOT = not STATE_FILE.exists()  # disque vide = serveur redémarré → on restaure depuis le Drive
 STATE = _load_state()
+_dirty = threading.Event()
+ACTIVE = ("recording", "starting", "finalizing", "uploading")
 _procs: dict[str, subprocess.Popen] = {}   # id -> ffmpeg en cours
 _stop_flags: dict[str, threading.Event] = {}
 
@@ -86,6 +90,7 @@ def save_state():
         tmp = STATE_FILE.with_suffix(".tmp")
         tmp.write_text(json.dumps(STATE, indent=2, ensure_ascii=False))
         tmp.replace(STATE_FILE)
+    _dirty.set()
 
 
 def _update(rec_id: str, **fields):
@@ -267,11 +272,56 @@ def _finalize(rec_id: str):
     size = final.stat().st_size
     _update(rec_id, status=status, file=final.name, size=size, duration=dur,
             ended=rec.get("ended") or _now())
-    note = {"stopped": " (arrêté manuellement)", "interrupted": " (interrompu par un redémarrage du serveur)"}
-    keep = STATE["settings"].get("retention_days", 7)
-    N.notify("done", f"✅ TikLive : la vidéo du live de @{rec['username']} est prête{note.get(status, '')}.\n"
-                     f"⏱ {fmt_dur(dur)} · 💾 {fmt_size(size)}\n"
-                     f"Pense à la télécharger : elle sera supprimée automatiquement dans {keep} jours.{N.link()}")
+    if G.connected():
+        threading.Thread(target=upload_to_drive, args=(rec_id,), daemon=True).start()
+    else:
+        _notify_done(rec_id)
+
+
+NOTE = {"stopped": " (arrêté manuellement)", "interrupted": " (interrompu par un redémarrage du serveur)"}
+
+
+def _notify_done(rec_id: str):
+    r = STATE["recordings"][rec_id]
+    head = f"✅ TikLive : la vidéo du live de @{r['username']} est prête{NOTE.get(r['status'], '')}.\n" \
+           f"⏱ {fmt_dur(r.get('duration'))} · 💾 {fmt_size(r.get('size'))}\n"
+    if r.get("drive_link"):
+        N.notify("done", head + f"📁 Elle est dans ton Google Drive (dossier « {G.FOLDER_NAME} ») :\n{r['drive_link']}")
+    else:
+        keep = STATE["settings"].get("retention_days", 7)
+        N.notify("done", head + f"Pense à la télécharger : elle sera supprimée automatiquement dans {keep} jours."
+                 f"{N.link()}")
+
+
+def upload_to_drive(rec_id: str):
+    r = STATE["recordings"][rec_id]
+    final_status = r["status"]
+    path = REC_DIR / (r.get("file") or "")
+    if not r.get("file") or not path.exists():
+        return
+    _update(rec_id, status="uploading", upload_pct=0)
+    last = [0.0]
+
+    def prog(sent, total):
+        if time.time() - last[0] > 3:
+            last[0] = time.time()
+            _update(rec_id, upload_pct=int(sent * 100 / max(total, 1)))
+    try:
+        res = G.upload_file(path, path.name, prog)
+        fields = {"status": final_status, "upload_pct": 100, "drive_id": res.get("id"),
+                  "drive_link": res.get("webViewLink") or f"https://drive.google.com/file/d/{res.get('id')}/view"}
+        if STATE["settings"].get("drive_delete_local", True):
+            path.unlink(missing_ok=True)
+            fields["file"] = None
+        _update(rec_id, **fields)
+        log.info("[%s] envoyé sur Google Drive", rec_id)
+        _notify_done(rec_id)
+    except Exception as e:
+        log.exception("[%s] envoi Drive échoué", rec_id)
+        _update(rec_id, status=final_status, upload_pct=None,
+                error=f"Envoi sur Google Drive échoué : {str(e)[:150]}. La vidéo reste téléchargeable ici.")
+        N.notify("error", f"⚠️ TikLive : la vidéo de @{r['username']} n'a pas pu être envoyée sur Google Drive. "
+                          f"Elle reste téléchargeable dans l'outil.{N.link()}")
 
 
 def _probe_duration(path: Path) -> float | None:
@@ -393,7 +443,7 @@ def stop_recording(rec_id: str) -> bool:
 def delete_recording(rec_id: str) -> bool:
     with _lock:
         rec = STATE["recordings"].get(rec_id)
-        if not rec or rec["status"] in ("recording", "starting", "finalizing"):
+        if not rec or rec["status"] in ACTIVE:
             return False
         if rec.get("file"):
             (REC_DIR / rec["file"]).unlink(missing_ok=True)
@@ -458,6 +508,51 @@ def _watch_loop():
         _wake.clear()
 
 
+def restore_from_drive():
+    """Après un redémarrage (disque vidé), on récupère la mémoire de l'outil depuis le Drive."""
+    if not (FRESH_BOOT and G.connected()):
+        return
+    try:
+        remote = G.load_state()
+    except Exception:
+        log.exception("Restauration depuis le Drive impossible")
+        return
+    if not remote:
+        return
+    with _lock:
+        for k in ("recordings", "watchlist", "settings", "flags"):
+            if k in remote:
+                STATE[k] = remote[k]
+        for k, v in DEFAULT_SETTINGS.items():
+            STATE["settings"].setdefault(k, v)
+        for rid, r in STATE["recordings"].items():
+            local = REC_DIR / r["file"] if r.get("file") else None
+            if local is None or not local.exists():
+                r["file"] = None
+            if r["status"] in ACTIVE:
+                r["status"] = "error"
+                r["error"] = "Le serveur a redémarré pendant ce live : l'enregistrement a été perdu."
+        save_state()
+    log.info("Mémoire restaurée depuis Google Drive (%d enregistrements, %d comptes surveillés)",
+             len(STATE["recordings"]), len(STATE["watchlist"]))
+
+
+def _backup_loop():
+    while True:
+        _dirty.wait()
+        time.sleep(20)  # on regroupe les changements
+        _dirty.clear()
+        if G.connected():
+            try:
+                with _lock:
+                    snapshot = json.loads(json.dumps(STATE))
+                G.save_state(snapshot)
+            except Exception as e:
+                log.warning("Sauvegarde Drive échouée : %s", e)
+                _dirty.set()
+                time.sleep(120)
+
+
 def recover_after_restart():
     """Si le serveur a redémarré pendant un enregistrement, on sauve ce qui a été capté."""
     for rid, r in list(STATE["recordings"].items()):
@@ -468,6 +563,9 @@ def recover_after_restart():
                 r["end_status"] = "interrupted"
                 save_state()
             _finalize(rid)
+        elif r["status"] == "uploading" and r.get("file") and G.connected():
+            _update(rid, status="done")
+            threading.Thread(target=upload_to_drive, args=(rid,), daemon=True).start()
 
 
 LOW_DISK = 2e9  # alerte sous 2 Go libres
@@ -480,13 +578,20 @@ def cleanup_once():
     if days > 0:
         limit = time.time() - days * 86400
         for rid, r in list(STATE["recordings"].items()):
-            if r["status"] in ("recording", "starting", "finalizing") or not r.get("ended"):
+            if r["status"] in ACTIVE or not r.get("ended"):
                 continue
             try:
                 ended = datetime.fromisoformat(r["ended"]).timestamp()
             except Exception:
                 continue
-            if ended < limit and delete_recording(rid):
+            if ended >= limit:
+                continue
+            if r.get("drive_link"):  # la vidéo est sur le Drive : on libère juste le serveur
+                if r.get("file"):
+                    (REC_DIR / r["file"]).unlink(missing_ok=True)
+                    _update(rid, file=None)
+                    removed.append(r["username"])
+            elif delete_recording(rid):
                 removed.append(r["username"])
     if removed:
         log.info("Nettoyage : %d vidéo(s) supprimée(s)", len(removed))
@@ -515,6 +620,9 @@ def _cleanup_loop():
 
 
 def start_background():
+    G.load_token()
+    restore_from_drive()
+    threading.Thread(target=_backup_loop, daemon=True).start()
     recover_after_restart()
     threading.Thread(target=_watch_loop, daemon=True).start()
     threading.Thread(target=_cleanup_loop, daemon=True).start()

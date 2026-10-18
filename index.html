@@ -89,6 +89,16 @@
   <div class="card" id="watch"><div class="empty">Aucun compte surveillé. Ajoute un @pseudo : dès qu'il lance un live, l'enregistrement démarre tout seul.</div></div>
 
   <h2>Réglages</h2>
+  <div class="card" style="margin-bottom:12px">
+    <details id="driveDetails">
+      <summary>📁 Google Drive <span class="badge" id="driveBadge">non connecté</span></summary>
+      <p class="steps" style="padding-left:0">À la fin de chaque live, la vidéo est envoyée automatiquement dans le dossier
+        <b>« TikLive Recorder »</b> de ton Google Drive. La mémoire de l'outil (comptes surveillés, réglages) y est aussi sauvegardée.</p>
+      <div class="chk"><input type="checkbox" id="driveDel"> Libérer le serveur une fois la vidéo sur le Drive (conseillé)</div>
+      <div class="btns"><a class="dl" id="btnDrive" href="/oauth/start" style="padding:12px 16px">Connecter mon Google Drive</a></div>
+    </details>
+  </div>
+
   <div class="card">
     <details id="setDetails">
       <summary>📲 Notifications WhatsApp <span class="badge" id="waBadge">non configuré</span></summary>
@@ -167,9 +177,9 @@ async function delRec(id){ if(!confirm("Supprimer définitivement cette vidéo ?
   try{ await api("/api/recordings/"+id,{method:"DELETE"}); }catch(e){ alert(e.message); } refresh(); }
 async function unwatch(u){ await api("/api/watch/"+encodeURIComponent(u),{method:"DELETE"}); refresh(); }
 
-const LABEL = {starting:"Démarrage…", recording:"En direct · enregistrement", finalizing:"Préparation de la vidéo…",
+const LABEL = {uploading:"Envoi sur Google Drive…", starting:"Démarrage…", recording:"En direct · enregistrement", finalizing:"Préparation de la vidéo…",
   done:"Terminé", stopped:"Arrêté manuellement", interrupted:"Interrompu (serveur redémarré)", error:"Erreur"};
-const DOT = {starting:"live", recording:"live", finalizing:"fin", done:"done", stopped:"done", interrupted:"fin", error:"err"};
+const DOT = {uploading:"fin", starting:"live", recording:"live", finalizing:"fin", done:"done", stopped:"done", interrupted:"fin", error:"err"};
 
 function render(s){
   const recs = s.recordings;
@@ -179,6 +189,7 @@ function render(s){
       const elapsed = active ? (Date.now() - new Date(r.started))/1000 : r.duration;
       const parts = [LABEL[r.status]||r.status];
       if (elapsed) parts.push(fmtDur(elapsed));
+      if (r.status === "uploading" && r.upload_pct != null) parts.push(r.upload_pct + " %");
       if (r.size) parts.push(fmtSize(r.size));
       parts.push(fmtDate(r.started));
       if (r.source === "surveillance") parts.push("auto");
@@ -189,8 +200,9 @@ function render(s){
         ${r.error ? `<div class="meta" style="color:#ff7a93">${esc(r.error)}</div>` : ""}
         <div class="actions">
           ${active ? `<button class="small danger" onclick="stopRec('${r.id}')">■ Arrêter</button>` : ""}
-          ${r.file ? `<a class="dl" href="/download/${r.id}">⬇ Télécharger</a>` : ""}
-          ${!active && r.status!=="finalizing" ? `<button class="small ghost" onclick="delRec('${r.id}')">Supprimer</button>` : ""}
+          ${r.drive_link ? `<a class="dl" href="${esc(r.drive_link)}" target="_blank" rel="noopener">📁 Ouvrir dans Drive</a>` : ""}
+          ${r.file ? `<a class="dl" style="background:#23232b;color:var(--text)" href="/download/${r.id}">⬇ Télécharger</a>` : ""}
+          ${!active && !["finalizing","uploading"].includes(r.status) ? `<button class="small ghost" onclick="delRec('${r.id}')">Supprimer</button>` : ""}
         </div></div></div>`;
     }).join("");
   const w = s.watchlist;
@@ -213,6 +225,12 @@ async function loadSettings(){
     $("#nStart").checked = SETTINGS.notify_start; $("#nDone").checked = SETTINGS.notify_done;
     $("#nError").checked = SETTINGS.notify_error; $("#nDisk").checked = SETTINGS.notify_disk;
     $("#retention").value = String(SETTINGS.retention_days);
+    $("#driveDel").checked = SETTINGS.drive_delete_local;
+    const d = $("#driveBadge"); d.textContent = SETTINGS.drive_connected ? "connecté" : "non connecté";
+    d.className = "badge" + (SETTINGS.drive_connected ? " on" : "");
+    $("#btnDrive").textContent = SETTINGS.drive_connected ? "Reconnecter un autre compte Drive" : "Connecter mon Google Drive";
+    if (!SETTINGS.drive_available) $("#btnDrive").style.display = "none";
+    if (SETTINGS.drive_available && !SETTINGS.drive_connected) $("#driveDetails").open = true;
     const b = $("#waBadge"); b.textContent = SETTINGS.wa_configured ? "activé" : "non configuré";
     b.className = "badge" + (SETTINGS.wa_configured ? " on" : "");
     if (!SETTINGS.wa_configured) $("#setDetails").open = true;
@@ -222,7 +240,7 @@ async function saveSettings(){
   SETTINGS = await api("/api/settings",{method:"POST",body:JSON.stringify({
     wa_phone:$("#waPhone").value.trim(), wa_apikey:$("#waKey").value.trim(),
     notify_start:$("#nStart").checked, notify_done:$("#nDone").checked,
-    notify_error:$("#nError").checked, notify_disk:$("#nDisk").checked,
+    notify_error:$("#nError").checked, notify_disk:$("#nDisk").checked, drive_delete_local:$("#driveDel").checked,
     retention_days:parseInt($("#retention").value,10)})});
   await loadSettings();
 }
@@ -233,6 +251,7 @@ $("#btnTest").onclick = async () => {
   catch(e){ setMsg(e.message,"err"); }
 };
 loadSettings();
+$("#driveDel").onchange = () => saveSettings().catch(()=>{});
 $("#target").addEventListener("keydown", e => { if (e.key === "Enter") $("#btnRec").click(); });
 </script>
 </body>

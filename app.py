@@ -5,15 +5,17 @@ Mot de passe : variable d'environnement APP_PASSWORD (identifiant libre).
 """
 
 import base64
+import json
 import logging
 import os
 import secrets
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
+import gdrive as G
 import notify as N
 import recorder as R
 
@@ -144,6 +146,7 @@ class Settings(BaseModel):
     notify_done: bool | None = None
     notify_error: bool | None = None
     notify_disk: bool | None = None
+    drive_delete_local: bool | None = None
 
 
 def _public_settings():
@@ -151,6 +154,8 @@ def _public_settings():
     key = s.get("wa_apikey") or ""
     s["wa_apikey"] = ("•" * max(0, len(key) - 2) + key[-2:]) if key else ""
     s["wa_configured"] = bool(s.get("wa_phone") and key)
+    s["drive_available"] = G.configured()
+    s["drive_connected"] = G.connected()
     return s
 
 
@@ -170,6 +175,35 @@ def set_settings(body: Settings):
         R.STATE["settings"].update(data)
         R.save_state()
     return _public_settings()
+
+
+@app.get("/oauth/start")
+def oauth_start():
+    if not G.configured():
+        raise HTTPException(400, "Google Drive n'est pas configuré sur le serveur.")
+    return RedirectResponse(G.auth_url())
+
+
+@app.get("/oauth/callback", response_class=HTMLResponse)
+def oauth_callback(code: str = "", state: str = "", error: str = ""):
+    if error or not code:
+        return _PAGE.format(t="Connexion annulée", b=f"<p>Google a répondu : {error or 'aucun code'}.</p>"
+                            "<p><a href='/'>Retour à l'outil</a></p>")
+    try:
+        refresh = G.exchange(code, state)
+    except Exception as e:
+        return _PAGE.format(t="Connexion impossible", b=f"<p>{e}</p><p><a href='/'>Retour à l'outil</a></p>")
+    # Clé chiffrée (illisible sans le code secret + le mot de passe) : à ranger dans GDRIVE_TOKEN_ENC
+    logging.getLogger("tiklive").warning("GDRIVE_TOKEN_ENC_TO_SAVE=%s", G.encrypt(refresh))
+    try:
+        G.folder_id()
+        with R._lock:
+            snap = json.loads(json.dumps(R.STATE))
+        G.save_state(snap)
+    except Exception as e:
+        logging.getLogger("tiklive").warning("Première sauvegarde Drive échouée: %s", e)
+    return _PAGE.format(t="✅ Google Drive connecté", b="<p>Tes prochaines vidéos seront envoyées automatiquement "
+                        f"dans le dossier « {G.FOLDER_NAME} » de ton Drive.</p><p><a href='/'>Retour à l'outil</a></p>")
 
 
 @app.post("/api/settings/test")
