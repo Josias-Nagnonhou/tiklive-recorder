@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: tiklive-recorder
+    runtime: docker
+    plan: starter          # le plan gratuit se met en veille et couperait les enregistrements
+    healthCheckPath: /health
+    envVars:
+      - key: APP_PASSWORD
+        generateValue: true  # mot de passe généré, visible dans Render > Environment
+      - key: WATCH_INTERVAL
+        value: "60"
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 20

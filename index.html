@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TikLive Recorder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0d0d10; --panel:#16161b; --line:#26262e; --text:#f2f2f5; --muted:#8b8b98;
+    --accent:#fe2c55; --accent2:#25f4ee; --ok:#3ddc84; --warn:#ffb020;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;font-size:15px}
+  .wrap{max-width:760px;margin:0 auto;padding:24px 16px 60px}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+  .logo{width:38px;height:38px;border-radius:10px;background:var(--accent);display:grid;place-items:center;
+        box-shadow:-3px -3px 0 var(--accent2)}
+  .logo span{width:12px;height:12px;border-radius:50%;background:#fff}
+  h1{font-family:"Space Grotesk";font-size:22px;margin:0;letter-spacing:-.3px}
+  h1 small{display:block;font-family:Inter;font-weight:400;font-size:13px;color:var(--muted);letter-spacing:0}
+  h2{font-family:"Space Grotesk";font-size:16px;margin:28px 0 10px;color:var(--muted);font-weight:500;
+     text-transform:uppercase;letter-spacing:.8px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+  input{width:100%;padding:14px;border-radius:10px;border:1px solid var(--line);background:#0f0f13;
+        color:var(--text);font-size:16px;outline:none}
+  input:focus{border-color:var(--accent)}
+  .btns{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap}
+  button{border:0;border-radius:10px;padding:12px 16px;font-weight:600;font-size:14px;cursor:pointer;
+         font-family:inherit}
+  .primary{background:var(--accent);color:#fff;flex:1;min-width:160px}
+  .secondary{background:#23232b;color:var(--text);flex:1;min-width:160px}
+  .small{padding:8px 12px;font-size:13px}
+  .ghost{background:transparent;color:var(--muted);border:1px solid var(--line)}
+  .danger{background:#3a1520;color:#ff7a93}
+  .dl{background:var(--ok);color:#06210f;text-decoration:none;display:inline-block;border-radius:10px;
+      padding:8px 12px;font-weight:600;font-size:13px}
+  button:disabled{opacity:.5;cursor:default}
+  .msg{margin-top:10px;font-size:14px;min-height:20px}
+  .msg.err{color:#ff7a93}.msg.ok{color:var(--ok)}.msg.info{color:var(--warn)}
+  .rec{display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-top:1px solid var(--line)}
+  .rec:first-child{border-top:0;padding-top:0}
+  .dot{width:10px;height:10px;border-radius:50%;margin-top:6px;flex:none;background:var(--muted)}
+  .dot.live{background:var(--accent);animation:pulse 1.2s infinite}
+  .dot.done{background:var(--ok)} .dot.fin{background:var(--warn)} .dot.err{background:#ff7a93}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(254,44,85,.6)}100%{box-shadow:0 0 0 10px rgba(254,44,85,0)}}
+  .info{flex:1;min-width:0}
+  .who{font-weight:600}
+  .meta{color:var(--muted);font-size:13px;margin-top:3px;overflow-wrap:anywhere}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .empty{color:var(--muted);font-size:14px}
+  .w{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+  .w:first-child{border-top:0;padding-top:0}
+  footer{margin-top:30px;color:var(--muted);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><span></span></div>
+    <h1>TikLive Recorder<small>Enregistre les lives TikTok, même sans les regarder</small></h1>
+  </header>
+
+  <div class="card">
+    <input id="target" placeholder="Colle le lien du live ou le @pseudo" autocomplete="off">
+    <div class="btns">
+      <button class="primary" id="btnRec">● Enregistrer le live</button>
+      <button class="secondary" id="btnWatch">👁 Surveiller ce compte</button>
+    </div>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <h2>Enregistrements</h2>
+  <div class="card" id="recs"><div class="empty">Aucun enregistrement pour l'instant.</div></div>
+
+  <h2>Comptes surveillés</h2>
+  <div class="card" id="watch"><div class="empty">Aucun compte surveillé. Ajoute un @pseudo : dès qu'il lance un live, l'enregistrement démarre tout seul.</div></div>
+
+  <footer id="disk"></footer>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const fmtSize = b => !b ? "0 Mo" : b > 1e9 ? (b/1e9).toFixed(2)+" Go" : (b/1e6).toFixed(1)+" Mo";
+const fmtDur = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s/3600), m = Math.floor(s%3600/60), x = s%60;
+  return (h ? h+"h" : "") + String(m).padStart(h?2:1,"0") + "min" + String(x).padStart(2,"0") + "s"; };
+const fmtDate = iso => iso ? new Date(iso).toLocaleString("fr-FR",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "";
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function say(text, kind="info"){ const m=$("#msg"); m.className="msg "+kind; m.innerHTML=text; }
+
+async function api(path, opts={}){
+  const r = await fetch(path, {headers:{"Content-Type":"application/json"}, ...opts});
+  let j = {}; try { j = await r.json(); } catch {}
+  if (!r.ok) throw new Error(j.detail || "Erreur "+r.status);
+  return j;
+}
+
+$("#btnRec").onclick = async () => {
+  const t = $("#target").value.trim(); if (!t) return say("Colle d'abord un lien ou un @pseudo.","err");
+  $("#btnRec").disabled = true; say("Recherche du live…");
+  try {
+    const j = await api("/api/record",{method:"POST",body:JSON.stringify({target:t})});
+    if (j.ok) { say("✅ Enregistrement lancé pour @"+esc(j.recording.username)+". Tu peux fermer cette page.","ok"); $("#target").value=""; }
+    else if (j.not_live) { say(esc(j.message)+' <button class="small secondary" id="offerWatch">Le surveiller pour enregistrer son prochain live</button>',"info");
+         $("#offerWatch").onclick = () => $("#btnWatch").click(); }
+    else say(esc(j.message),"err");
+  } catch(e){ say(esc(e.message),"err"); }
+  $("#btnRec").disabled = false; refresh();
+};
+
+$("#btnWatch").onclick = async () => {
+  const t = $("#target").value.trim(); if (!t) return say("Colle d'abord un lien ou un @pseudo.","err");
+  try {
+    const j = await api("/api/watch",{method:"POST",body:JSON.stringify({target:t})});
+    say("👁 @"+esc(j.watch.username)+" est surveillé. Dès qu'il passe en live, l'enregistrement démarre.","ok");
+    $("#target").value="";
+  } catch(e){ say(esc(e.message),"err"); }
+  refresh();
+};
+
+async function stopRec(id){ if(!confirm("Arrêter l'enregistrement maintenant ?")) return; await api("/api/stop/"+id,{method:"POST"}); refresh(); }
+async function delRec(id){ if(!confirm("Supprimer définitivement cette vidéo ?")) return;
+  try{ await api("/api/recordings/"+id,{method:"DELETE"}); }catch(e){ alert(e.message); } refresh(); }
+async function unwatch(u){ await api("/api/watch/"+encodeURIComponent(u),{method:"DELETE"}); refresh(); }
+
+const LABEL = {starting:"Démarrage…", recording:"En direct · enregistrement", finalizing:"Préparation de la vidéo…",
+  done:"Terminé", stopped:"Arrêté manuellement", interrupted:"Interrompu (serveur redémarré)", error:"Erreur"};
+const DOT = {starting:"live", recording:"live", finalizing:"fin", done:"done", stopped:"done", interrupted:"fin", error:"err"};
+
+function render(s){
+  const recs = s.recordings;
+  $("#recs").innerHTML = !recs.length ? '<div class="empty">Aucun enregistrement pour l\'instant.</div>' :
+    recs.map(r => {
+      const active = ["starting","recording"].includes(r.status);
+      const elapsed = active ? (Date.now() - new Date(r.started))/1000 : r.duration;
+      const parts = [LABEL[r.status]||r.status];
+      if (elapsed) parts.push(fmtDur(elapsed));
+      if (r.size) parts.push(fmtSize(r.size));
+      parts.push(fmtDate(r.started));
+      if (r.source === "surveillance") parts.push("auto");
+      return `<div class="rec"><div class="dot ${DOT[r.status]||""}"></div><div class="info">
+        <div class="who">@${esc(r.username)}</div>
+        ${r.title ? `<div class="meta">${esc(r.title)}</div>` : ""}
+        <div class="meta">${parts.map(esc).join(" · ")}</div>
+        ${r.error ? `<div class="meta" style="color:#ff7a93">${esc(r.error)}</div>` : ""}
+        <div class="actions">
+          ${active ? `<button class="small danger" onclick="stopRec('${r.id}')">■ Arrêter</button>` : ""}
+          ${r.file ? `<a class="dl" href="/download/${r.id}">⬇ Télécharger</a>` : ""}
+          ${!active && r.status!=="finalizing" ? `<button class="small ghost" onclick="delRec('${r.id}')">Supprimer</button>` : ""}
+        </div></div></div>`;
+    }).join("");
+  const w = s.watchlist;
+  $("#watch").innerHTML = !w.length ? '<div class="empty">Aucun compte surveillé. Ajoute un @pseudo : dès qu\'il lance un live, l\'enregistrement démarre tout seul.</div>' :
+    w.map(x => `<div class="w"><div><div class="who">@${esc(x.username)}</div>
+      <div class="meta">${esc(x.last_status)}${x.last_check ? " · vérifié "+fmtDate(x.last_check) : ""}</div></div>
+      <button class="small ghost" onclick="unwatch('${esc(x.username)}')">Retirer</button></div>`).join("");
+  $("#disk").textContent = `Vidéos stockées : ${fmtSize(s.disk.recordings)} · Espace libre : ${fmtSize(s.disk.free)} · Vérification des comptes toutes les ${s.interval}s`;
+}
+
+async function refresh(){ try { render(await api("/api/state")); } catch(e){} }
+refresh(); setInterval(refresh, 4000);
+$("#target").addEventListener("keydown", e => { if (e.key === "Enter") $("#btnRec").click(); });
+</script>
+</body>
+</html>
