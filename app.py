@@ -23,7 +23,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
 
 app = FastAPI(title="TikLive Recorder")
-PUBLIC_PATHS = {"/health", "/accueil", "/confidentialite", "/oauth/callback"}
+PUBLIC_PATHS = {"/health", "/accueil", "/confidentialite", "/oauth/callback", "/favicon.ico", "/apple-touch-icon.png"}
+STATIC_DIR = Path(__file__).parent / "static"
 
 _PAGE = """<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{t}</title><style>body{{font-family:system-ui,sans-serif;max-width:680px;margin:40px auto;padding:0 16px;line-height:1.6;color:#222}}</style>
@@ -32,7 +33,7 @@ _PAGE = """<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name
 
 @app.middleware("http")
 async def auth(request: Request, call_next):
-    if not APP_PASSWORD or request.url.path in PUBLIC_PATHS:
+    if not APP_PASSWORD or request.url.path in PUBLIC_PATHS or request.url.path.startswith("/static/"):
         return await call_next(request)
     h = request.headers.get("authorization", "")
     if h.startswith("Basic "):
@@ -69,6 +70,26 @@ def confidentialite():
         "donnée. Les identifiants Google sont stockés uniquement sur le serveur privé de l'outil et peuvent être "
         "révoqués à tout moment depuis https://myaccount.google.com/permissions.</p>"
         "<p>Contact : propriétaire de l'outil (Josias).</p>")
+
+
+@app.get("/favicon.ico")
+def favicon():
+    return FileResponse(STATIC_DIR / "favicon.ico", media_type="image/x-icon")
+
+
+@app.get("/apple-touch-icon.png")
+def apple_icon():
+    return FileResponse(STATIC_DIR / "apple-touch-icon.png", media_type="image/png")
+
+
+@app.get("/static/{name}")
+def static_file(name: str):
+    path = (STATIC_DIR / name).resolve()
+    if path.parent != STATIC_DIR.resolve() or not path.is_file():
+        raise HTTPException(404)
+    types = {".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json"}
+    return FileResponse(path, media_type=types.get(path.suffix, "application/octet-stream"),
+                        headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/health")
