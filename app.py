@@ -22,6 +22,7 @@ import recorder as R
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+APP_USERNAME = os.environ.get("APP_USERNAME", "").strip().lower()
 
 app = FastAPI(title="TikLive Recorder")
 PUBLIC_PATHS = {"/health", "/accueil", "/confidentialite", "/oauth/callback", "/favicon.ico", "/apple-touch-icon.png"}
@@ -39,8 +40,9 @@ async def auth(request: Request, call_next):
     h = request.headers.get("authorization", "")
     if h.startswith("Basic "):
         try:
-            _, pwd = base64.b64decode(h[6:]).decode().split(":", 1)
-            if secrets.compare_digest(pwd, APP_PASSWORD):
+            user, pwd = base64.b64decode(h[6:]).decode().split(":", 1)
+            user_ok = not APP_USERNAME or secrets.compare_digest(user.strip().lower(), APP_USERNAME)
+            if user_ok and secrets.compare_digest(pwd, APP_PASSWORD):
                 return await call_next(request)
         except Exception:
             pass
