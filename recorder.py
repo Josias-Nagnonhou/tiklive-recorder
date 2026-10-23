@@ -586,6 +586,7 @@ def _backup_loop():
                 with _lock:
                     snapshot = json.loads(json.dumps(STATE))
                 G.save_state(snapshot)
+                time.sleep(240)  # au plus une sauvegarde toutes les ~4 min (sauf échec)
             except Exception as e:
                 log.warning("Sauvegarde Drive échouée : %s", e)
                 _dirty.set()
@@ -594,6 +595,10 @@ def _backup_loop():
 
 def recover_after_restart():
     """Si le serveur a redémarré pendant un enregistrement, on sauve ce qui a été capté."""
+    for n in STATE.get("notifications", []):
+        if n.get("phone") in ("pending", "retry"):
+            n["phone"] = "failed"
+            n["phone_note"] = "Interrompue par un redémarrage du serveur"
     for rid, r in list(STATE["recordings"].items()):
         if r["status"] in ("recording", "starting", "finalizing"):
             log.warning("Récupération de l'enregistrement interrompu %s", rid)

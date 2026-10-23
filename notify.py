@@ -2,7 +2,10 @@
 
 import logging
 import os
+import random
 import threading
+import time
+from datetime import datetime, timezone
 
 import httpx
 
@@ -57,17 +60,68 @@ def send_ntfy(text: str, topic: str | None = None) -> tuple[bool, str]:
         return False, f"Impossible de joindre ntfy : {e}"
 
 
-def _send_all(text: str):
-    send_ntfy(text)
-    send_whatsapp(text)
+# ntfy.sh limite le nombre de messages par adresse IP. Le serveur Render partage son IP avec
+# d'autres clients, qui peuvent épuiser cette limite : on réessaie donc pendant plusieurs heures
+# au lieu d'abandonner au premier refus (erreur 429).
+RETRY_DELAYS = [10, 30, 60, 120, 300, 600, 900, 1800, 1800, 3600, 3600, 3600]  # ≈ 4 h au total
+HISTORY_MAX = 40
+
+
+def _now():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _history_add(entry: dict) -> dict:
+    import recorder as R
+    with R._lock:
+        h = R.STATE.setdefault("notifications", [])
+        h.insert(0, entry)
+        del h[HISTORY_MAX:]
+        R.save_state()
+    return entry
+
+
+def _history_update(entry: dict, **fields):
+    import recorder as R
+    with R._lock:
+        entry.update(fields)
+        R.save_state()
+
+
+def _deliver_phone(text: str, entry: dict):
+    for attempt, delay in enumerate([0] + RETRY_DELAYS):
+        if delay:
+            time.sleep(delay + random.uniform(0, delay * 0.2))
+        ok, msg = send_ntfy(text)
+        if ok:
+            late = f" (après {attempt + 1} essais)" if attempt else ""
+            _history_update(entry, phone="ok", phone_at=_now(), phone_note=f"Reçue sur ton téléphone{late}")
+            return
+        if "non configurées" in msg:
+            _history_update(entry, phone="off", phone_note="Notifications téléphone non configurées")
+            return
+        log.warning("ntfy refusé (essai %d) : %s", attempt + 1, msg)
+        _history_update(entry, phone="retry", phone_note=f"Service saturé, nouvel essai en cours ({attempt + 1})")
+    _history_update(entry, phone="failed", phone_note="Pas pu être envoyée après 4 h d'essais")
+
+
+def _send_all(text: str, entry: dict):
+    threading.Thread(target=_deliver_phone, args=(text, entry), daemon=True).start()
+    ok, _ = send_whatsapp(text)
+    if ok:
+        _history_update(entry, whatsapp="ok")
 
 
 def notify(event: str, text: str):
-    """Envoie en arrière-plan (téléphone + WhatsApp), sans jamais bloquer l'enregistrement."""
+    """Envoie en arrière-plan (téléphone + WhatsApp), sans jamais bloquer l'enregistrement.
+    Chaque notification est aussi gardée dans l'historique visible dans l'outil."""
     s = _settings()
+    entry = {"at": _now(), "event": event, "text": text, "phone": "pending", "phone_note": "Envoi en cours"}
+    _history_add(entry)
     if not s.get(f"notify_{event}", True):
+        _history_update(entry, phone="off", phone_note="Désactivée dans tes réglages")
         return
-    threading.Thread(target=_send_all, args=(text,), daemon=True).start()
+    threading.Thread(target=_send_all, args=(text, entry), daemon=True).start()
 
 
 def link() -> str:

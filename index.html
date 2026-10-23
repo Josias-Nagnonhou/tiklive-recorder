@@ -155,6 +155,18 @@ code{background:var(--soft);border:1px solid var(--line);padding:2px 7px;border-
 .btn.sm{padding:9px 14px;font-size:13.5px;border-radius:11px;text-decoration:none;display:inline-block}
 .panel .msg{padding-left:0}
 
+/* Historique des notifications */
+.notifs{background:var(--card);border:1px solid var(--line);border-radius:20px;overflow:hidden}
+.nf{display:flex;gap:12px;align-items:flex-start;padding:12px 16px;border-top:1px solid var(--line)}
+.nf:first-child{border-top:0}
+.nf .ic{width:30px;height:30px;border-radius:50%;background:var(--soft);display:grid;place-items:center;font-size:14px;flex:none;margin-top:1px}
+.nf .tx{flex:1;min-width:0}
+.nf .tt{font-weight:600;font-size:14px;overflow-wrap:anywhere}
+.nf .st{font-size:12.5px;color:var(--muted);margin-top:2px}
+.nf .st b{font-weight:600}
+.nf .st b.ok{color:var(--ok)} .nf .st b.wait{color:var(--warn)} .nf .st b.bad{color:var(--err)}
+.nf time{font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.notifs .more{display:block;width:100%;border:0;border-top:1px solid var(--line);background:none;padding:12px;color:var(--muted);font-weight:500;font-size:13.5px}
 footer{margin-top:26px;color:var(--muted);font-size:12.5px;text-align:center}
 
 @media (prefers-reduced-motion:no-preference){
@@ -193,6 +205,9 @@ footer{margin-top:26px;color:var(--muted);font-size:12.5px;text-align:center}
 
   <h2>Vidéos <small id="vidCount"></small></h2>
   <div id="vids"></div>
+
+  <h2>Notifications <small>ce que l'outil t'a envoyé</small></h2>
+  <div id="notifs"></div>
 
   <h2>Réglages</h2>
   <div class="settings">
@@ -384,8 +399,28 @@ function render(s){
           </div></article>`;
       }).join("") + '</div>';
 
+  renderNotifs(s.notifications);
   $("#disk").textContent = `Espace libre sur le serveur : ${fmtSize(s.disk.free)} · comptes vérifiés toutes les ${s.interval} s`;
 }
+let NF_ALL = false;
+window.nfMore = () => { NF_ALL = !NF_ALL; refresh(); };
+const NF_ICON = {start:"🔴", done:"✅", error:"⚠️", disk:"💾"};
+const NF_STATE = {ok:["ok","Reçue sur ton téléphone"], pending:["wait","Envoi en cours"], retry:["wait","Service saturé, nouvel essai en cours"],
+  failed:["bad","Non reçue"], off:["", "Non envoyée"]};
+function renderNotifs(list){
+  if (!list || !list.length) { $("#notifs").innerHTML = '<div class="empty">Les alertes envoyées sur ton téléphone apparaîtront ici.</div>'; return; }
+  const shown = NF_ALL ? list : list.slice(0, 4);
+  $("#notifs").innerHTML = '<div class="notifs">' + shown.map(n => {
+    const [cls, label] = NF_STATE[n.phone] || ["", ""];
+    const title = (n.text || "").split("\n")[0].replace(/^\S+\s*TikLive\s*:\s*/, "");
+    const T = title.charAt(0).toUpperCase() + title.slice(1);
+    const note = n.phone_note && n.phone_note !== label ? n.phone_note : label;
+    return `<div class="nf"><div class="ic">${NF_ICON[n.event] || "🔔"}</div>
+      <div class="tx"><div class="tt">${esc(T)}</div><div class="st"><b class="${cls}">${esc(note)}</b>${n.whatsapp === "ok" ? " · WhatsApp ✓" : ""}</div></div>
+      <time>${esc(dayLabel(n.at))}</time></div>`;
+  }).join("") + (list.length > 4 ? `<button class="more" onclick="nfMore()">${NF_ALL ? "Voir moins" : "Voir les " + list.length + " notifications"}</button>` : "") + '</div>';
+}
+
 async function refresh(){ try { render(await api("/api/state")); } catch(e){} }
 refresh(); setInterval(refresh, 4000);
 

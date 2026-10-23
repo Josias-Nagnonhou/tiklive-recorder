@@ -113,7 +113,8 @@ def health():
 def state():
     recs = sorted(R.STATE["recordings"].values(), key=lambda r: r["started"], reverse=True)
     return {"recordings": recs, "watchlist": list(R.STATE["watchlist"].values()),
-            "disk": R.disk_info(), "interval": R.WATCH_INTERVAL}
+            "disk": R.disk_info(), "interval": R.WATCH_INTERVAL,
+            "notifications": R.STATE.get("notifications", [])[:15]}
 
 
 @app.post("/api/record")
