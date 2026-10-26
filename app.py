@@ -236,10 +236,10 @@ def set_settings(body: Settings):
 
 
 @app.get("/oauth/start")
-def oauth_start():
+def oauth_start(mode: str = "primary"):
     if not G.configured():
         raise HTTPException(400, "Google Drive n'est pas configuré sur le serveur.")
-    return RedirectResponse(G.auth_url())
+    return RedirectResponse(G.auth_url("add" if mode == "add" else "primary"))
 
 
 @app.get("/oauth/callback", response_class=HTMLResponse)
@@ -248,26 +248,46 @@ def oauth_callback(code: str = "", state: str = "", error: str = ""):
         return _PAGE.format(t="Connexion annulée", b=f"<p>Google a répondu : {error or 'aucun code'}.</p>"
                             "<p><a href='/'>Retour à l'outil</a></p>")
     try:
-        refresh = G.exchange(code, state)
+        mode, refresh, email = G.exchange(code, state)
     except Exception as e:
         return _PAGE.format(t="Connexion impossible", b=f"<p>{e}</p><p><a href='/'>Retour à l'outil</a></p>")
-    # Clé chiffrée (illisible sans le code secret + le mot de passe) : à ranger dans GDRIVE_TOKEN_ENC
-    logging.getLogger("tiklive").warning("GDRIVE_TOKEN_ENC_TO_SAVE=%s", G.encrypt(refresh))
+    lg = logging.getLogger("tiklive")
+    if mode == "add":
+        with R._lock:
+            R.STATE.setdefault("drive_accounts", []).append(
+                {"enc": G.encrypt(refresh), "email": email, "added": R._now()})
+            R.save_state()
+        lg.info("Compte Drive supplémentaire ajouté : %s", email)
+        msg = (f"<p>Le compte <b>{email}</b> est ajouté. Quand ton Drive principal sera plein, "
+               f"les vidéos iront automatiquement dans celui-ci (dossier « {G.FOLDER_NAME} »).</p>")
+    else:
+        # Clé chiffrée (illisible sans le code secret + le mot de passe) : à ranger dans GDRIVE_TOKEN_ENC
+        lg.warning("GDRIVE_TOKEN_ENC_TO_SAVE=%s", G.encrypt(refresh))
+        msg = (f"<p>Tes prochaines vidéos seront envoyées automatiquement dans le dossier "
+               f"« {G.FOLDER_NAME} » du Drive <b>{email}</b>.</p>")
     try:
-        G.folder_id()
         with R._lock:
             snap = json.loads(json.dumps(R.STATE))
         G.save_state(snap)
     except Exception as e:
-        logging.getLogger("tiklive").warning("Première sauvegarde Drive échouée: %s", e)
-    return _PAGE.format(t="✅ Google Drive connecté", b="<p>Tes prochaines vidéos seront envoyées automatiquement "
-                        f"dans le dossier « {G.FOLDER_NAME} » de ton Drive.</p><p><a href='/'>Retour à l'outil</a></p>")
+        lg.warning("Sauvegarde Drive échouée: %s", e)
+    return _PAGE.format(t="✅ Google Drive connecté", b=msg + "<p><a href='/'>Retour à l'outil</a></p>")
 
 
-@app.post("/api/settings/test-phone")
-def test_phone():
-    ok, msg = N.send_ntfy("🔔 TikLive Recorder\nTest réussi ! Tu recevras ici les alertes de tes lives.")
-    return {"ok": ok, "message": msg}
+@app.get("/api/drive/accounts")
+def drive_accounts():
+    return {"accounts": G.accounts_info()}
+
+
+@app.delete("/api/drive/accounts/{email}")
+def drive_remove(email: str):
+    if not G.remove_extra(email):
+        raise HTTPException(400, "Seuls les comptes supplémentaires peuvent être retirés.")
+    with R._lock:
+        R.STATE["drive_accounts"] = [a for a in R.STATE.get("drive_accounts", [])
+                                     if a.get("email", "").lower() != email.lower()]
+        R.save_state()
+    return {"ok": True}
 
 
 @app.post("/api/settings/test")
