@@ -135,6 +135,46 @@ def folder_id() -> str:
     return fid
 
 
+class DriveError(RuntimeError):
+    def __init__(self, reason: str, message: str, status: int):
+        super().__init__(f"{reason}: {message}")
+        self.reason, self.message, self.status = reason, message, status
+
+    @property
+    def full(self) -> bool:
+        return self.reason in ("storageQuotaExceeded", "quotaExceeded") or "quota" in self.message.lower() and "storage" in self.message.lower()
+
+    @property
+    def temporary(self) -> bool:
+        return self.status >= 500 or self.status == 429 or self.reason in (
+            "rateLimitExceeded", "userRateLimitExceeded", "backendError", "internalError")
+
+
+def _raise(r: httpx.Response):
+    if r.status_code < 400:
+        return
+    reason, message = "", r.text[:300]
+    try:
+        err = r.json().get("error", {})
+        message = err.get("message", message)
+        reason = (err.get("errors") or [{}])[0].get("reason", "") or err.get("status", "")
+    except Exception:
+        pass
+    log.warning("Google Drive a refusé (%s) : %s — %s", r.status_code, reason, message)
+    raise DriveError(reason or str(r.status_code), message, r.status_code)
+
+
+def quota() -> dict:
+    """Espace du Drive : total, utilisé, libre (en octets). limit=0 signifie illimité."""
+    r = httpx.get("https://www.googleapis.com/drive/v3/about", params={"fields": "storageQuota"},
+                  headers=_h(), timeout=30)
+    _raise(r)
+    q = r.json().get("storageQuota", {})
+    limit, usage = int(q.get("limit") or 0), int(q.get("usage") or 0)
+    return {"limit": limit, "usage": usage, "trash": int(q.get("usageInDriveTrash") or 0),
+            "free": (limit - usage) if limit else None}
+
+
 def upload_file(path: Path, name: str, progress=None) -> dict:
     """Envoi « reprenable » par morceaux de 16 Mo (adapté aux vidéos de plusieurs Go)."""
     size = path.stat().st_size
@@ -143,7 +183,7 @@ def upload_file(path: Path, name: str, progress=None) -> dict:
                    params={"uploadType": "resumable", "fields": "id,webViewLink"},
                    headers={**_h(), "X-Upload-Content-Type": mime, "X-Upload-Content-Length": str(size)},
                    json={"name": name, "parents": [folder_id()]}, timeout=60)
-    r.raise_for_status()
+    _raise(r)
     session = r.headers["Location"]
     chunk = 16 * 1024 * 1024
     sent = 0

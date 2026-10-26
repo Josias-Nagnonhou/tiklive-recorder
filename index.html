@@ -167,6 +167,15 @@ code{background:var(--soft);border:1px solid var(--line);padding:2px 7px;border-
 .nf .st b.ok{color:var(--ok)} .nf .st b.wait{color:var(--warn)} .nf .st b.bad{color:var(--err)}
 .nf time{font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .notifs .more{display:block;width:100%;border:0;border-top:1px solid var(--line);background:none;padding:12px;color:var(--muted);font-weight:500;font-size:13.5px}
+.vid .acts{flex-wrap:wrap}
+.vid .acts .redrive{flex:1 1 100%;background:var(--ink);color:var(--on-ink)}
+.quota{margin:0 0 12px}
+.qbar{height:8px;border-radius:8px;background:var(--soft);overflow:hidden}
+.qbar i{display:block;height:100%;border-radius:8px;background:var(--ok);transition:width .4s}
+.qbar i.warn{background:var(--warn)} .qbar i.full{background:var(--err)}
+.qtx{font-size:13px;color:var(--muted);margin-top:6px}
+.qtx b{color:var(--fg)}
+.qtx.bad{color:var(--err)}
 footer{margin-top:26px;color:var(--muted);font-size:12.5px;text-align:center}
 
 @media (prefers-reduced-motion:no-preference){
@@ -215,6 +224,7 @@ footer{margin-top:26px;color:var(--muted);font-size:12.5px;text-align:center}
       <summary><span class="ico">📁</span><span class="t">Google Drive</span><span class="badge" id="driveBadge">non connecté</span><span class="chev">›</span></summary>
       <div class="panel">
         <p class="steps" style="padding-left:0">À la fin de chaque live, la vidéo part automatiquement dans le dossier <b>« TikLive Recorder »</b> de ton Drive. Tes comptes et réglages y sont aussi sauvegardés.</p>
+        <div class="quota" id="quota" hidden><div class="qbar"><i id="qfill"></i></div><div class="qtx" id="qtx"></div></div>
         <div class="chk"><input type="checkbox" id="driveDel"><label for="driveDel">Libérer le serveur une fois la vidéo sur le Drive (conseillé)</label></div>
         <div class="row"><a class="btn btn-ink sm" id="btnDrive" href="/oauth/start">Connecter mon Google Drive</a></div>
       </div>
@@ -342,6 +352,7 @@ $("#btnWatch").onclick = async () => {
 $("#target").addEventListener("keydown", e => { if (e.key === "Enter") $("#btnRec").click(); });
 window.stopRec = async id => { if (!confirm("Arrêter l'enregistrement maintenant ? Ce qui a été capté sera gardé.")) return;
   await api("/api/stop/"+id,{method:"POST"}); refresh(); };
+window.reDrive = async id => { try { await api("/api/recordings/"+id+"/drive",{method:"POST"}); } catch(e){ alert(e.message); } refresh(); };
 window.delRec = async id => { if (!confirm("Supprimer cette vidéo de l'outil ? (Si elle est sur ton Drive, elle y reste.)")) return;
   try { await api("/api/recordings/"+id,{method:"DELETE"}); } catch(e){ alert(e.message); } refresh(); };
 window.unwatch = async u => { if (!confirm("Ne plus surveiller @"+u+" ?")) return;
@@ -394,6 +405,7 @@ function render(s){
           ${r.error ? `<div class="err">${esc(r.error)}</div>` : ""}
           <div class="acts">
             ${r.drive_link ? `<a class="drive" href="${esc(r.drive_link)}" target="_blank" rel="noopener">Ouvrir</a>` : ""}
+            ${r.file && !r.drive_link && SETTINGS.drive_connected ? `<button class="redrive" onclick="reDrive('${r.id}')">Renvoyer sur Drive</button>` : ""}
             ${r.file ? `<a href="/download/${r.id}">Télécharger</a>` : ""}
             <button class="del" title="Supprimer" aria-label="Supprimer" onclick="delRec('${r.id}')">✕</button>
           </div></article>`;
@@ -444,6 +456,22 @@ async function loadSettings(){
     const b = $("#waBadge"); b.textContent = SETTINGS.wa_configured ? "WhatsApp activé" : "WhatsApp non configuré";
     b.className = "badge" + (SETTINGS.wa_configured ? " on" : "");
     $("#ntfyTopic").textContent = SETTINGS.ntfy_topic || "";
+    if (SETTINGS.drive_connected) loadQuota();
+  } catch(e){}
+}
+const gb = b => (b/1e9).toFixed(1).replace(".",",") + " Go";
+async function loadQuota(){
+  try {
+    const q = await api("/api/drive/quota"); if (!q.connected || q.error || !q.limit) return;
+    const pct = Math.min(100, Math.round(q.usage*100/q.limit));
+    $("#quota").hidden = false;
+    const f = $("#qfill"); f.style.width = pct + "%"; f.className = pct >= 97 ? "full" : pct >= 85 ? "warn" : "";
+    const t = $("#qtx");
+    t.className = "qtx" + (pct >= 97 ? " bad" : "");
+    t.innerHTML = `<b>${gb(q.usage)}</b> utilisés sur ${gb(q.limit)} · ${gb(Math.max(0,q.free))} libres` +
+      (pct >= 97 ? " — Drive plein : les prochaines vidéos ne pourront pas y être envoyées." : "") +
+      (q.trash > 5e8 ? ` · ${gb(q.trash)} dans la corbeille (vide-la pour récupérer cette place)` : "");
+    if (pct >= 85) $("#driveDetails").open = true;
   } catch(e){}
 }
 async function saveSettings(){

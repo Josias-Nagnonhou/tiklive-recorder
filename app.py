@@ -132,6 +132,30 @@ def record(t: Target):
                              "message": "Cette personne n'est pas en live en ce moment."}, 200)
 
 
+@app.post("/api/recordings/{rec_id}/drive")
+def resend_drive(rec_id: str):
+    rec = R.STATE["recordings"].get(rec_id)
+    if not rec or not rec.get("file"):
+        raise HTTPException(404, "Cette vidéo n'est plus sur le serveur.")
+    if rec["status"] in R.ACTIVE:
+        raise HTTPException(400, "Envoi déjà en cours.")
+    if not G.connected():
+        raise HTTPException(400, "Google Drive n'est pas connecté.")
+    import threading
+    threading.Thread(target=R.upload_to_drive, args=(rec_id, True), daemon=True).start()
+    return {"ok": True}
+
+
+@app.get("/api/drive/quota")
+def drive_quota():
+    if not G.connected():
+        return {"connected": False}
+    try:
+        return {"connected": True, **G.quota()}
+    except Exception as e:
+        return {"connected": True, "error": str(e)[:200]}
+
+
 @app.post("/api/stop/{rec_id}")
 def stop(rec_id: str):
     if not R.stop_recording(rec_id):

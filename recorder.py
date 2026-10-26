@@ -316,35 +316,59 @@ def _notify_done(rec_id: str):
                  f"{N.link()}")
 
 
-def upload_to_drive(rec_id: str):
+UPLOAD_RETRY = [60, 300, 900, 1800, 3600]  # nouveaux essais si Google est momentanément indisponible
+
+
+def upload_to_drive(rec_id: str, manual: bool = False):
     r = STATE["recordings"][rec_id]
-    final_status = r["status"]
+    final_status = r["status"] if r["status"] != "uploading" else "done"
     path = REC_DIR / (r.get("file") or "")
     if not r.get("file") or not path.exists():
         return
-    _update(rec_id, status="uploading", upload_pct=0)
     last = [0.0]
 
     def prog(sent, total):
         if time.time() - last[0] > 3:
             last[0] = time.time()
             _update(rec_id, upload_pct=int(sent * 100 / max(total, 1)))
-    try:
-        res = G.upload_file(path, path.name, prog)
-        fields = {"status": final_status, "upload_pct": 100, "drive_id": res.get("id"),
-                  "drive_link": res.get("webViewLink") or f"https://drive.google.com/file/d/{res.get('id')}/view"}
-        if STATE["settings"].get("drive_delete_local", True):
-            path.unlink(missing_ok=True)
-            fields["file"] = None
-        _update(rec_id, **fields)
-        log.info("[%s] envoyé sur Google Drive", rec_id)
-        _notify_done(rec_id)
-    except Exception as e:
-        log.exception("[%s] envoi Drive échoué", rec_id)
-        _update(rec_id, status=final_status, upload_pct=None,
-                error=f"Envoi sur Google Drive échoué : {str(e)[:150]}. La vidéo reste téléchargeable ici.")
-        N.notify("error", f"⚠️ TikLive : la vidéo de @{r['username']} n'a pas pu être envoyée sur Google Drive. "
-                          f"Elle reste téléchargeable dans l'outil.{N.link()}")
+
+    for attempt, wait in enumerate([0] + ([] if manual else UPLOAD_RETRY)):
+        if wait:
+            _update(rec_id, status=final_status, upload_pct=None,
+                    error=f"Google Drive indisponible pour le moment, nouvel essai dans {wait // 60} min.")
+            time.sleep(wait)
+        _update(rec_id, status="uploading", upload_pct=0, error=None)
+        try:
+            res = G.upload_file(path, path.name, prog)
+            fields = {"status": final_status, "upload_pct": 100, "drive_id": res.get("id"), "error": None,
+                      "drive_link": res.get("webViewLink") or f"https://drive.google.com/file/d/{res.get('id')}/view"}
+            if STATE["settings"].get("drive_delete_local", True):
+                path.unlink(missing_ok=True)
+                fields["file"] = None
+            _update(rec_id, **fields)
+            log.info("[%s] envoyé sur Google Drive", rec_id)
+            _notify_done(rec_id)
+            return
+        except G.DriveError as e:
+            log.warning("[%s] envoi Drive refusé : %s", rec_id, e)
+            if e.full:
+                _update(rec_id, status=final_status, upload_pct=None, drive_full=True,
+                        error="Ton Google Drive est plein : la vidéo n'a pas pu y être envoyée. "
+                              "Elle reste téléchargeable ici. Libère de la place puis appuie sur « Renvoyer sur Drive ».")
+                N.notify("error", f"⚠️ TikLive : ton Google Drive est plein, la vidéo de @{r['username']} "
+                                  f"n'a pas pu y être envoyée. Elle reste téléchargeable dans l'outil.{N.link()}")
+                return
+            if not e.temporary:
+                break
+            err = e
+        except Exception as e:
+            log.exception("[%s] envoi Drive échoué", rec_id)
+            err = e
+    _update(rec_id, status=final_status, upload_pct=None,
+            error=f"Envoi sur Google Drive échoué ({str(err)[:120]}). La vidéo reste téléchargeable ici, "
+                  "tu peux aussi appuyer sur « Renvoyer sur Drive ».")
+    N.notify("error", f"⚠️ TikLive : la vidéo de @{r['username']} n'a pas pu être envoyée sur Google Drive. "
+                      f"Elle reste téléchargeable dans l'outil.{N.link()}")
 
 
 def _probe_resolution(path: Path) -> str | None:
@@ -663,8 +687,23 @@ def _cleanup_loop():
         time.sleep(3600)
 
 
+def log_drive_quota():
+    if not G.connected():
+        return
+    try:
+        q = G.quota()
+        if q["limit"]:
+            log.info("Espace Google Drive : %s utilisés sur %s (corbeille : %s, libre : %s)",
+                     fmt_size(q["usage"]), fmt_size(q["limit"]), fmt_size(q["trash"]), fmt_size(q["free"]))
+        else:
+            log.info("Espace Google Drive : %s utilisés (illimité)", fmt_size(q["usage"]))
+    except Exception as e:
+        log.warning("Espace Drive illisible : %s", e)
+
+
 def start_background():
     G.load_token()
+    threading.Thread(target=log_drive_quota, daemon=True).start()
     restore_from_drive()
     threading.Thread(target=_backup_loop, daemon=True).start()
     recover_after_restart()
