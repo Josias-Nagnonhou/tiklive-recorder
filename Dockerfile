@@ -4,6 +4,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
-ENV DATA_DIR=/data
+ENV DATA_DIR=/data \
+    MALLOC_ARENA_MAX=2 \
+    PYTHONUNBUFFERED=1
 # yt-dlp est mis à jour à chaque démarrage : TikTok change souvent, ça évite les pannes
 CMD pip install -q -U yt-dlp; uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}

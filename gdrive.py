@@ -150,17 +150,29 @@ class Account:
                        json={"name": name, "parents": [self.folder_id()]}, timeout=60)
         _raise(r)
         session = r.headers["Location"]
+        # Envoi en flux, 1 Mo à la fois : la mémoire reste autour de 30 Mo quelle que soit la taille
+        # de la vidéo (l'ancienne méthode montait à ~900 Mo et faisait planter le serveur de 512 Mo).
         chunk = 16 * 1024 * 1024
         sent = 0
+
+        def piece(f, start, n):
+            f.seek(start)
+            left = n
+            while left:
+                b = f.read(min(left, 1 << 20))
+                if not b:
+                    break
+                left -= len(b)
+                yield b
+
         with open(path, "rb") as f, httpx.Client(timeout=300) as c:
             while sent < size:
-                f.seek(sent)
-                data = f.read(chunk)
-                end = sent + len(data) - 1
+                n = min(chunk, size - sent)
+                end = sent + n - 1
                 for attempt in range(6):
                     try:
-                        resp = c.put(session, content=data, headers={
-                            **self.h(), "Content-Range": f"bytes {sent}-{end}/{size}"})
+                        resp = c.put(session, content=piece(f, sent, n), headers={
+                            **self.h(), "Content-Length": str(n), "Content-Range": f"bytes {sent}-{end}/{size}"})
                         break
                     except httpx.HTTPError:
                         if attempt == 5:
