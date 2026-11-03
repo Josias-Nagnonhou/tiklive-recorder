@@ -541,29 +541,48 @@ def remove_watch(username: str):
 _wake = threading.Event()
 
 
+ALERT_AFTER = 10          # alerte seulement après ~10 vérifications ratées d'affilée (≈ 10 min)
+_fails: dict[str, int] = {}
+_alerted: set[str] = set()
+
+
+def _check_account(u: str) -> str:
+    """Vérifie un compte ; en cas de simple coupure réseau, on retente 2 fois tout de suite."""
+    for attempt in range(3):
+        if active_for(u):
+            return "🔴 en cours d'enregistrement"
+        try:
+            start_recording({"kind": "tiktok", "username": u}, source="surveillance")
+            return "🔴 live détecté → enregistrement lancé"
+        except NotLive:
+            return "pas en live"
+        except TikTokUnreachable:
+            status = "erreur: TikTok ne répond pas au serveur"
+        except Exception as e:
+            status = f"erreur: {str(e)[:120]}"
+        time.sleep(10)
+    return status
+
+
 def _watch_loop():
     while True:
         for u in list(STATE["watchlist"].keys()):
             if u not in STATE["watchlist"]:
                 continue
             A.ensure(u, TIKTOK_COOKIE)
-            status = "pas en live"
-            if active_for(u):
-                status = "🔴 en cours d'enregistrement"
+            status = _check_account(u)
+            if status.startswith("erreur"):
+                _fails[u] = _fails.get(u, 0) + 1
+                if _fails[u] == ALERT_AFTER and u not in _alerted:
+                    _alerted.add(u)
+                    N.notify("error", f"⚠️ TikLive : depuis 10 minutes, je n'arrive pas à vérifier @{u} "
+                                      f"(TikTok ne répond pas au serveur). Je continue d'essayer chaque minute."
+                                      f"{N.link()}")
             else:
-                try:
-                    start_recording({"kind": "tiktok", "username": u}, source="surveillance")
-                    status = "🔴 live détecté → enregistrement lancé"
-                except NotLive:
-                    pass
-                except TikTokUnreachable:
-                    status = "erreur: TikTok ne répond pas au serveur"
-                except Exception as e:
-                    status = f"erreur: {str(e)[:120]}"
-            prev = (STATE["watchlist"].get(u) or {}).get("last_status", "")
-            if status.startswith("erreur") and not prev.startswith("erreur"):
-                N.notify("error", f"⚠️ TikLive : je n'arrive plus à vérifier @{u} ({status[8:]}). "
-                                  f"Je continue d'essayer.{N.link()}")
+                _fails[u] = 0
+                if u in _alerted:
+                    _alerted.discard(u)
+                    N.notify("error", f"✅ TikLive : la surveillance de @{u} fonctionne de nouveau normalement.")
             with _lock:
                 if u in STATE["watchlist"]:
                     STATE["watchlist"][u].update(last_check=_now(), last_status=status)
