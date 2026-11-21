@@ -188,6 +188,7 @@ def _via_webapi(username: str) -> tuple[str, str]:
                 params={"aid": "1988", "uniqueId": username, "sourceType": "54"},
             ).json()
             room_id = (j.get("data") or {}).get("user", {}).get("roomId")
+            _diag(username, "user/room", j)
         except Exception:
             pass
         if not room_id:
@@ -200,6 +201,9 @@ def _via_webapi(username: str) -> tuple[str, str]:
             "https://webcast.tiktok.com/webcast/room/info/",
             params={"aid": "1988", "room_id": room_id},
         ).json().get("data") or {}
+    _diag(username, "room/info", {k: data.get(k) for k in (
+        "status", "id_str", "title", "linkmic_layout", "with_linkmic", "live_type_linkmic",
+        "linker_map", "link_mic", "owner_user_id", "multi_stream_scene")})
     if data.get("status") != 2:  # 2 = en direct
         raise NotLive()
     stream = data.get("stream_url") or {}
@@ -220,6 +224,21 @@ def _via_webapi(username: str) -> tuple[str, str]:
     if stream.get("rtmp_pull_url"):
         return stream["rtmp_pull_url"], data.get("title") or ""
     raise NotLive()
+
+
+_diag_last: dict[str, float] = {}
+
+
+def _diag(username: str, what: str, payload):
+    """Relevé de diagnostic (toutes les 5 min max par compte) pour étudier les lives en invité."""
+    key = username + what
+    if time.time() - _diag_last.get(key, 0) < 300:
+        return
+    _diag_last[key] = time.time()
+    try:
+        log.info("DIAG %s %s %s", username, what, json.dumps(payload, ensure_ascii=False)[:3000])
+    except Exception:
+        pass
 
 
 def get_stream(target: dict) -> tuple[str, str]:
